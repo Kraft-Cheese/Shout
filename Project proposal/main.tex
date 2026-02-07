@@ -1,0 +1,171 @@
+% This file is meant to be compiled with the official ACL style files:
+%   acl.sty, acl_natbib.bst
+% See: https://github.com/acl-org/acl-style-files  (do not include URL in final paper text)
+
+\documentclass[11pt]{article}
+
+\usepackage[hyperref]{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+\title{Shout: Privacy-Preserving Browser-Based ASR and Morphological Reconstruction\\
+for North American Low-Resource Languages}
+
+% For anonymous submission, keep this. For a camera-ready version, replace with author info.
+\author{Imad Benahmed, Jean-Christophe Clouâtre, Cassandre Hamel, Vennila Sooben\\
+Affiliation\\
+\texttt{imad.benahmed@umontreal.ca, jean-christophe.clouatre@umontreal.ca}\\
+\texttt{cassandre.hamel.1@umontreal.ca, vennila.sooben@umontreal.ca}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+North American Indigenous languages face ongoing endangerment and technological marginalization.
+In Canada, 237{,}420 Indigenous people reported being able to speak an Indigenous language well enough to conduct a conversation in the 2021 census, a decline of 4.3\% from 2016. \cite{statcan2021languages}
+At the same time, modern automatic speech recognition (ASR) systems remain disproportionately weak on many low-resource and morphologically complex languages, particularly polysynthetic languages where a single orthographic ``word'' can encode sentence-level meaning.
+Existing ASR deployments frequently rely on cloud processing, which can conflict with community expectations around privacy, data governance, and on-device agency.
+
+We propose \textbf{Shout}, a fully in-browser ASR + reconstruction pipeline deployed via WebAssembly.
+Shout uses (i) a small, quantized Whisper-family base recognizer for on-device inference \cite{radford2022whisper,whispercpp}
+(ii) language-specific LoRA adapters for efficient adaptation to target languages \cite{song2024lorawhisper}
+and (iii) an uncertainty-triggered post-ASR reconstruction module inspired by \citet{diwan2021reduce}, designed to repair outputs when word-boundary or morphological errors are likely.
+We will evaluate accuracy (WER/CER), efficiency (latency, real-time factor, memory), and ablations comparing single-pass ASR vs.\ reconstruction-on-uncertainty.
+Deliverables include a browser-deployable prototype, a systematic study of whether reconstruction improves WER for polysynthetic settings, and a release of trained adapters where permitted by data agreements.
+\end{abstract}
+
+\section{Introduction}
+Indigenous languages across North America encode rich cultural knowledge but face severe pressure from historical and ongoing forces.
+In Canada, census data indicate a recent decline in the number of people who can conduct a conversation in an Indigenous language. \cite{statcan2021languages}
+In parallel, practical language technologies---including transcription tools for education, documentation, and accessibility---remain less available for many Indigenous languages than for high-resource languages.
+
+A core barrier is that state-of-the-art ASR models are typically trained on web-scale multilingual audio dominated by high-resource languages.
+For polysynthetic languages, ASR errors often cluster around \textit{word boundary} and \textit{morphology}: the acoustic model may produce plausible phonetic fragments, but the decoded word segmentation and inflection are unstable, leading to high word error rates even when character error rates are less catastrophic.
+Prior work documents that polysynthesis introduces distinctive challenges for ASR, including vocabulary growth, boundary ambiguity, and mismatch with modeling assumptions derived from more isolating languages. \cite{gupta2020inuktitut,gupta2020cree}
+
+In addition, many deployed solutions rely on cloud inference, requiring users to upload audio to remote servers.
+For communities concerned with data sovereignty, consent, and local control, cloud-first deployment can be unacceptable even when technically effective.
+Meanwhile, WebAssembly (WASM) and modern browser runtimes make on-device inference increasingly feasible, as demonstrated by Whisper inference ports with WebAssembly support. \cite{whispercpp}
+
+\textbf{Goal.} Shout aims to deliver usable transcription in a browser, preserving privacy by keeping audio and inference local, while improving word-level accuracy for morphologically complex languages through lightweight adaptation (LoRA) and reconstruction.
+
+\section{Related Work}
+\paragraph{ASR for Indigenous and low-resource languages.}
+Research on Canadian Indigenous-language ASR highlights practical constraints and error patterns.
+\citet{gupta2020inuktitut} present early results on Inuktitut ASR and discuss polysynthetic-specific difficulties.
+\citet{gupta2020cree} study Cree transcription under resource constraints.
+More broadly, competitions and surveys across Indigenous languages show that careful fine-tuning and hyperparameter choices matter, but language complexity and data limitations remain central bottlenecks. \cite{romero2024americas}
+
+\paragraph{Whisper as a base recognizer and on-device inference.}
+Whisper-style models provide strong multilingual baselines trained at scale. \cite{radford2022whisper}
+Open-source inference stacks such as \texttt{whisper.cpp} support quantization and WebAssembly builds, enabling fully local inference in constrained environments (including browsers). \cite{whispercpp}
+Quantization studies suggest meaningful size/latency reductions with limited accuracy loss on standard benchmarks, supporting edge deployment as a practical direction. \cite{andreyev2025quantization}
+
+\paragraph{Parameter-efficient adaptation with LoRA.}
+LoRA-based adaptation has become a standard approach for cheaply specializing large models.
+LoRA-Whisper proposes attaching language-specific LoRA modules to Whisper to reduce interference and allow incremental language expansion. \cite{song2024lorawhisper}
+This aligns with our requirement to support multiple languages without full retraining.
+
+\paragraph{Post-ASR reconstruction.}
+Shout’s reconstruction component is inspired by the ``reduce and reconstruct'' paradigm: reduce output ambiguity during ASR, then apply a lightweight reconstruction module (e.g., finite-state transducer) to recover valid spellings/strings. \cite{diwan2021reduce}
+Although the original method targets phonetic languages, the key insight---use an inexpensive constrained decoder to recover well-formed outputs---is appealing for morphology- and boundary-heavy settings.
+
+\section{Task and Datasets}
+\subsection{Target languages}
+Our primary targets are North American Indigenous languages spoken in Canada (e.g., Mohawk/Kanien'kéha, Cree varieties, Innu-aimun, Inuktitut).
+However, dataset access may require formal approvals, community governance processes, and usage agreements.
+
+\subsection{Data acquisition plan and fallback}
+\textbf{Primary plan:} pursue access to community-approved or institutionally governed corpora where available, and follow dataset-specific terms.
+We will prioritize datasets with clear consent and intended-use alignment.
+
+\textbf{Fallback plan:} if access is denied or delayed, we will conduct a proxy evaluation on publicly available morphologically rich or polysynthetic-like languages (e.g., Greenlandic; additionally, agglutinative languages such as Turkish/Finnish for controlled comparisons) to test transferability of our uncertainty + reconstruction strategy.
+This fallback explicitly does \textit{not} substitute for community-specific evaluation; it is a technical validation of the method under similar linguistic pressures.
+
+\section{Method}
+Shout combines three modules: (1) browser ASR, (2) language adaptation, (3) uncertainty-triggered reconstruction.
+
+\subsection{Browser-based ASR backbone}
+We start from a small Whisper-family recognizer (Tiny/Base), quantized for browser feasibility, using a WebAssembly-capable runtime (e.g., \texttt{whisper.cpp}). \cite{radford2022whisper,whispercpp}
+We will profile memory and latency to determine the smallest model that can deliver acceptable accuracy for our intended use.
+
+\subsection{Language-specific LoRA adapters}
+For each supported language, we train a LoRA adapter on top of the base model, following prior work on LoRA-Whisper. \cite{song2024lorawhisper}
+This provides parameter-efficient specialization and allows incremental addition of languages without full retraining.
+
+\subsection{Uncertainty estimation and triggering policy}
+We implement a confidence/uncertainty estimator over decoded outputs (candidate options include token-level posterior statistics, average log-probabilities, entropy proxies, or heuristic boundary instability signals).
+When uncertainty exceeds a threshold, Shout triggers reconstruction.
+We will tune the threshold on held-out data to balance accuracy and latency.
+
+\subsection{Reconstruction module}
+The reconstruction module aims to correct likely boundary/morphology failures while remaining lightweight enough for in-browser use.
+We will implement a constrained decoder that maps ``noisy'' ASR output to well-formed strings using:
+(1) finite-state transducer (FST) constraints where feasible, inspired by \citet{diwan2021reduce};
+(2) optionally, a small sequence-to-sequence corrector if an FST is insufficient, subject to runtime constraints.
+We will document which reconstruction strategy is used per language and what linguistic resources (lexicons, morph rules) are required.
+
+\section{Baselines and Evaluation}
+\subsection{Baselines}
+We compare:
+\begin{enumerate}
+    \item Whisper baseline (no adaptation).
+    \item Whisper + LoRA adapter.
+    \item Whisper + LoRA + reconstruction on uncertainty.
+    \item Full fine-tune baseline (where feasible) for comparison to LoRA.
+    \item Full fine-tune + reconstruction (where feasible).
+\end{enumerate}
+
+\subsection{Metrics}
+\textbf{Accuracy:} WER and CER, plus optional boundary-sensitive measures if available (e.g., word-boundary F1 in languages with appropriate annotations). \cite{gupta2020inuktitut}
+
+\textbf{Efficiency:} latency, real-time factor (RTF), peak memory, and download footprint (model size).
+
+\textbf{Ablations:} (i) uncertainty threshold sweep; (ii) reconstruction type (FST vs.\ learned); (iii) LoRA rank/size.
+
+\subsection{Success criteria}
+We consider Shout successful if:
+(i) it runs fully in-browser with predictable resource use;
+(ii) it improves WER over the same backbone without reconstruction in settings where boundary/morphology errors dominate;
+(iii) it maintains privacy by design (no server required for transcription).
+
+\section{Challenges and Risk Mitigation}
+\paragraph{C1: Data scarcity and governance.}
+Access to Indigenous-language speech data may require approvals and usage restrictions.
+We will treat community governance as a first-class constraint; if access is not granted, we will rely on proxy experiments while clearly separating proxy findings from claims about specific communities.
+
+\paragraph{C2: Browser performance constraints.}
+WebAssembly inference imposes limits on model size and runtime.
+We mitigate via quantization, careful batching/streaming decisions, and systematic profiling. \cite{whispercpp,andreyev2025quantization}
+
+\paragraph{C3: Reconstruction complexity.}
+High-quality reconstruction can require linguistic resources (lexicons, morph analyzers).
+We will start with minimal constraints and progressively incorporate richer resources where available, while measuring the marginal benefit of each added component.
+
+\section{Limitations}
+Shout does not claim to solve the sociotechnical challenges of language technology for Indigenous communities.
+Even with on-device deployment, meaningful adoption depends on consent, governance, and fit to local priorities.
+Technically, our reconstruction approach may improve word-level accuracy in some settings but could fail when the ASR hypothesis is too degraded or when linguistic resources are insufficient.
+Finally, proxy-language evaluations cannot fully represent the properties and community needs of specific North American Indigenous languages.
+
+\section{Ethics Statement}
+This project is motivated by privacy, agency, and respectful deployment.
+We explicitly avoid assuming that any dataset is available or that any community wants a transcription system.
+We will:
+(1) follow dataset terms and community governance requirements;
+(2) avoid releasing data or models when prohibited;
+(3) document intended-use boundaries and known failure modes;
+(4) prefer fully local inference to reduce risks of unintended data collection.
+We also recognize the risk of misrepresentation: poor transcription quality can harm trust and mislead learners; we will report errors transparently and avoid overstating capability.
+
+\section{Conclusion}
+We proposed Shout, a privacy-preserving in-browser ASR system augmented with language-specific LoRA adapters and an uncertainty-triggered reconstruction module.
+Shout’s core contribution is a practical, measurable test of whether lightweight reconstruction can improve word-level accuracy for morphologically complex, low-resource settings while preserving strict on-device privacy.
+If successful and permitted by data agreements, we will release trained adapters and an open prototype to support future community-aligned work.
+
+\bibliography{custom}
+\bibliographystyle{acl_natbib}
+
+\end{document}
