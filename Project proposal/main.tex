@@ -9,6 +9,7 @@
 \usepackage{latexsym}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
+\usepackage{natbib}
 
 \title{Shout: Privacy-Preserving Browser-Based ASR and Morphological Reconstruction\\
 for North American Low-Resource Languages}
@@ -26,13 +27,15 @@ Affiliation\\
 % ----------BEGIN TEXT----------
 % ------------------------------
 \begin{abstract}
-Automatic speech recognition (ASR) remains underserved for North-American low-resource languages, particularly Indigenous polysynthetic languages in what is now Canada. This gap stems from severe data scarcity, privacy and data sovereignty constraints, and persistent failures on word boundaries and morphology. \citep{statcan2021aboriginal,fnigc_ocap,gupta2020inuktitut,gupta2020cree}
+Automatic speech recognition (ASR) remains underserved for North-American low-resource languages, particularly Indigenous polysynthetic languages in what is now Canada.
+This gap stems from severe data scarcity, privacy and data sovereignty constraints, and persistent failures on word boundaries and morphology. \citep{statcan2021aboriginal,fnigc_ocap,gupta2020inuktitut,gupta2020cree}
 We propose \textsc{Shout}, a fully in-browser pipeline combining a quantized Whisper backbone, language-specific LoRA adapters, and an uncertainty-triggered reconstruction stage. \citep{radford2022whisper,whispercpp,andreyev2025quantization,song2024lorawhisper,diwan2021reduce}
 Client-side deployment (WebAssembly/WebGPU) keeps speech on-device and reduces reliance on cloud infrastructure. \citep{xenova_whisper_web,hf_transformersjs_webgpu}
-We evaluate accuracy (WER/CER; morpheme-boundary F1 where analyzers exist) and deployability (latency, real-time factor, memory), with ablations isolating adaptation, uncertainty thresholds, and reconstruction strategies. We prioritize Plains Cree and Inuktitut subject to data access agreements with NRC and university partners, with proxy polysynthetic datasets (e.g., Greenlandic, Nahuatl) as fallbacks to demonstrate transferability. \citep{nrc_ilt_factsheet,ardila2020commonvoice,openslr92,giellalt_langkal}
+We evaluate accuracy (WER/CER; morpheme-boundary F1 where analyzers exist) and deployability (latency, real-time factor, memory), with ablations isolating adaptation, uncertainty thresholds, and reconstruction strategies.
+We prioritize Plains Cree and Inuktitut subject to data access agreements with NRC and university partners, with proxy polysynthetic datasets (e.g., Greenlandic, Nahuatl) as fallbacks to demonstrate transferability. \citep{nrc_ilt_factsheet,ardila2020commonvoice,openslr92,giellalt_langkal}
 \end{abstract}
 
-\section{Introduction}
+\section{Introduction}\label{sec:introduction}
 Indigenous languages across North America face critical endangerment; in Canada, census reporting shows a continued decline in conversational Indigenous-language speakers. \citep{statcan2021aboriginal}
 At the same time, cloud-based transcription can conflict with community expectations around privacy, governance, and local control of speech data, motivating on-device tools aligned with Indigenous data sovereignty principles. \citep{fnigc_ocap}
 Technically, polysynthetic morphology and ambiguous word boundaries contribute to high WER and OOV sensitivity, even when character-level errors are less extreme. \citep{gupta2020inuktitut,gupta2020cree,le-ferrand-etal-2024-modern}
@@ -46,9 +49,9 @@ We propose \textsc{Shout}, an in-browser ASR+reconstruction system:
 \end{enumerate}
 
 \paragraph{Language focus.}
-We prioritize Plains Cree (leveraging \textit{itw\^{e}wina} morphological resources) and Inuktitut (leveraging existing Indigenous language technology efforts), contingent on data access agreements; we then extend to Mohawk and Innu as resources permit. \citep{itwewina_about,nrc_ilt_factsheet}
+We prioritize Plains Cree (leveraging \textit{itwêwina} morphological resources) and Inuktitut (leveraging existing Indigenous language technology efforts), contingent on data access agreements; we then extend to Mohawk and Innu as resources permit. \citep{itwewina_about,nrc_ilt_factsheet}
 
-\section{Related Work}
+\section{Related Work}\label{sec:related-work}
 ASR for Indigenous languages in Canada highlights the combined impact of low data and polysynthetic structure on segmentation and OOV behavior. \citep{gupta2020inuktitut,gupta2020cree}
 Recent analyses show modern ASR systems can be disproportionately fragile on morphologically complex languages in terms of WER, motivating explicit word-level correction. \citep{le-ferrand-etal-2024-modern}
 Whisper provides strong multilingual baselines, but underrepresented languages typically benefit from targeted adaptation. \citep{radford2022whisper}
@@ -56,17 +59,20 @@ LoRA enables parameter-efficient, extensible adaptation without full retraining.
 Reconstruction-based post-processing (e.g., constrained decoding / FST-style correction) can recover errors introduced during decoding, motivating our uncertainty-triggered reconstruction. \citep{diwan2021reduce}
 Finally, browser-based Whisper deployments demonstrate technical feasibility for on-device transcription. \citep{whispercpp,xenova_whisper_web,hf_transformersjs_webgpu}
 
-\section{Task and Data}
+\section{Task and Data}\label{sec:task-and-data}
+
 \paragraph{Task.}
-Given an audio clip, the system (1) transcribes speech, (2) estimates uncertainty over segments, and (3) applies reconstruction when uncertainty indicates likely word-level errors. We report WER/CER and, where analyzers exist, morpheme-boundary F1.
+Given an audio clip, the system (1) transcribes speech, (2) estimates uncertainty over segments, and (3) applies reconstruction when uncertainty indicates likely word-level errors.
+We report WER/CER and, where analyzers exist, morpheme-boundary F1.
 
 \paragraph{Primary data (subject to agreement).}
-We will request access to community-governed Plains Cree resources (e.g., Maskwac\^{\i}s-related recordings via Speech-DB infrastructure) and pursue Inuktitut data access through NRC/university partners. \citep{poulin2023speechdb,nrc_ilt_factsheet}
+We will request access to community-governed Plains Cree resources (e.g., Maskwacîs-related recordings via Speech-DB infrastructure) and pursue Inuktitut data access through NRC/university partners. \citep{poulin2023speechdb,nrc_ilt_factsheet}
 
 \paragraph{Fallback data (public).}
 If primary access is delayed, we evaluate transferability on proxy polysynthetic datasets: Greenlandic via Common Voice plus a public morphological analyzer, and Nahuatl via OpenSLR speech with transcription. \citep{ardila2020commonvoice,giellalt_langkal,openslr92}
 
-\section{Methods}
+\section{Methods}\label{sec:methods}
+
 \paragraph{Backbone (O1,O3).}
 We use a compact Whisper model for on-device inference and quantize it to meet browser memory/latency constraints. \citep{radford2022whisper,andreyev2025quantization}
 Inference runs in-browser using existing runtimes (e.g., \texttt{whisper.cpp} or WebGPU-based pipelines). \citep{whispercpp,xenova_whisper_web,hf_transformersjs_webgpu}
@@ -81,13 +87,14 @@ We compute a decoder-derived uncertainty score (e.g., mean log-probability / ent
 We compare four lightweight strategies:
 \begin{enumerate}
     \item \textbf{Lexicon edit-distance} correction against valid wordforms;
-    \item \textbf{Analyzer-/FST-constrained} validation and candidate selection (e.g., \textit{itw\^{e}wina}; Greenlandic analyzers); \citep{itwewina_about,giellalt_langkal}
+    \item \textbf{Analyzer-/FST-constrained} validation and candidate selection (e.g., \textit{itwêwina}; Greenlandic analyzers); \citep{itwewina_about,giellalt_langkal}
     \item \textbf{Neural post-correction} (small character-level mapping model);
     \item \textbf{Hybrid} (1)+(2) with an explicit failure flag.
 \end{enumerate}
 Our design is inspired by reconstruction-style low-resource ASR post-processing. \citep{diwan2021reduce}
 
-\section{Baselines, Evaluation, and Challenges}
+\section{Baselines, Evaluation, and Challenges}\label{sec:baselines-evaluation-and-challenges}
+
 \paragraph{Baselines.}
 \begin{itemize}
     \item \textbf{B1:} Whisper (quantized), no adaptation. \citep{radford2022whisper,andreyev2025quantization}
