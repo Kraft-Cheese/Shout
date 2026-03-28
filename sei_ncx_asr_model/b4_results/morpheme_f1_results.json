@@ -1,0 +1,28 @@
+{
+  "sei": {
+    "language": "sei",
+    "n_examples": 452,
+    "token_f1_before": 0.009857628778763606,
+    "token_f1_after": 0.02755778238656724,
+    "token_f1_delta": 0.017700153607803634,
+    "boundary_f1_before": 0.14016991400751802,
+    "boundary_f1_after": 0.14628140225567818,
+    "boundary_f1_delta": 0.006111488248160157,
+    "n_improved": 45,
+    "n_regressed": 0,
+    "n_unchanged": 407
+  },
+  "ncx": {
+    "language": "ncx",
+    "n_examples": 345,
+    "token_f1_before": 0.06553673512191253,
+    "token_f1_after": 0.15617671707686165,
+    "token_f1_delta": 0.09063998195494911,
+    "boundary_f1_before": 0.19558467346510575,
+    "boundary_f1_after": 0.22415117130452225,
+    "boundary_f1_delta": 0.028566497839416505,
+    "n_improved": 106,
+    "n_regressed": 2,
+    "n_unchanged": 237
+  }
+}
