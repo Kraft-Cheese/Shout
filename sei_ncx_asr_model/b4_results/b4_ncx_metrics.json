@@ -1,0 +1,11 @@
+{
+  "language": "ncx",
+  "wer_before": 1.7771345875542692,
+  "wer_after": 1.6780028943560057,
+  "wer_delta": -0.09913169319826354,
+  "words_corrected": 1477,
+  "total_words": 2433,
+  "vocab_size": 788,
+  "max_edit_dist": 2,
+  "input_file": "b1_results/b1_zero_shot_ncx_predictions.csv"
+}

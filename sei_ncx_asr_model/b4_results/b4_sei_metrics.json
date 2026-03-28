@@ -1,0 +1,11 @@
+{
+  "language": "sei",
+  "wer_before": 1.3512320706141965,
+  "wer_after": 1.3383596910628908,
+  "wer_delta": -0.012872379551305713,
+  "words_corrected": 1841,
+  "total_words": 2850,
+  "vocab_size": 1220,
+  "max_edit_dist": 2,
+  "input_file": "b1_results/b1_zero_shot_sei_predictions.csv"
+}
