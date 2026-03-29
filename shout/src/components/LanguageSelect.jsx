@@ -5,7 +5,8 @@ import { loadModel } from '../workers/worker.js';
 const LANGUAGES = [
   { code: 'en', name: 'English' },
   { code: 'fr', name: 'French' },
-  { code: 'nahuatl', name: 'Nahuatl' },
+  { code: 'nhn', name: 'Central Puebla Nahuatl' },
+  { code: 'sei', name: 'Seri' },
 ];
 
 /**

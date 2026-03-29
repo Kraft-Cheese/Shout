@@ -5,10 +5,17 @@ import * as Comlink from 'comlink';
  *
  * Runs in a separate thread for non-blocking inference.
  * Exposes load() and transcribe() via Comlink.
+ *
+ * WASM API reference: public/wasm/index.html
+ *   - Module.FS_createDataFile()
+ *   - Module.init(fname, lang)
+ *   - Module.set_audio(ctx, buf)
+ *   - Module.get_transcribed()
+ *   - Module.get_probabilities()
+ *   - Module.get_confidence()
  */
 
 let ctx = null;
-let Module = null;
 let isModelLoaded = false;
 
 /**
@@ -28,7 +35,7 @@ const api = {
    * Check if the WASM module is available.
    */
   async checkAvailability() {
-    const wasmExists = await fileExists('/wasm/whisper.js');
+    const wasmExists = await fileExists('/wasm/stream.js');
     return { available: wasmExists };
   },
 
@@ -37,23 +44,33 @@ const api = {
    * @param {string} language - Language code (e.g., 'en')
    */
   async load(language) {
-    // Check if WASM exists first
-    const wasmUrl = '/wasm/whisper.js';
+    const wasmUrl = '/wasm/stream.js';
     const wasmExists = await fileExists(wasmUrl);
 
     if (!wasmExists) {
       throw new Error(
-        'Whisper WASM module not found. Please add whisper.js to public/wasm/'
+        'Whisper WASM module not found. Please add stream.js to public/wasm/'
       );
     }
 
     try {
-      // Dynamic import with variable to bypass Vite's static analysis
-      const wasmPath = wasmUrl;
-      Module = await import(/* @vite-ignore */ wasmPath);
-      await Module.default();
+      // Pre-configure the global Module object before importing stream.js.
+      // Emscripten checks `typeof Module !== 'undefined'` at the top of the
+      // generated file and uses this object if present Ref: stream.js
+      // postRun fires once the WASM binary is compiled and ready Ref: index.html
+      await new Promise((resolve, reject) => {
+        self.Module = {
+          print: () => {},
+          printErr: () => {},
+          setStatus: () => {},
+          monitorRunDependencies: () => {},
+          postRun: resolve,
+          onAbort: () => reject(new Error('WASM aborted during initialisation')),
+        };
+        import(/* @vite-ignore */ '/wasm/stream.js').catch(reject);
+      });
 
-      // Fetch and initialize model
+      // Fetch model binary
       const modelUrl = `/models/whisper-base-${language}-q5.bin`;
       const modelExists = await fileExists(modelUrl);
 
@@ -65,13 +82,25 @@ const api = {
 
       const response = await fetch(modelUrl);
       const buffer = await response.arrayBuffer();
-      ctx = Module.init(new Uint8Array(buffer));
+
+      // Write model binary into the WASM virtual filesystem (MEMFS).
+      // Ref: index.html (storeFS function)
+      try { self.Module.FS_unlink('whisper.bin'); } catch (_) {}
+      self.Module.FS_createDataFile('/', 'whisper.bin', new Uint8Array(buffer), true, true);
+
+      // Initialise whisper with filename + language code.
+      // Returns an integer instance ID. Ref: index.html
+      ctx = self.Module.init('whisper.bin', language);
+      if (!ctx) {
+        throw new Error(
+          'Module.init returned null'
+        );
+      }
+
       isModelLoaded = true;
     } catch (err) {
       isModelLoaded = false;
-      throw new Error(
-        `Failed to load Whisper: ${err.message}`
-      );
+      throw new Error(`Failed to load Whisper: ${err.message}`);
     }
   },
 
@@ -92,17 +121,29 @@ const api = {
       throw new Error('Model not loaded. Please load the model first.');
     }
 
-    const result = self.Module.transcribe(ctx, audio);
+    // Feed audio into the stream context
+    self.Module.set_audio(ctx, audio);
 
-    // Calculate confidence from token probabilities
-    const confidence = result.tokens?.length
-      ? Math.exp(
-          result.tokens.reduce((sum, t) => sum + (t.p || 0), 0) /
-          result.tokens.length
-        )
-      : 0.5;
+    // Poll get_transcribed() until text is returned or 30s timeout.
+    // Ref: index.html
+    const deadline = Date.now() + 30000;
+    let text = null;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 100));
+      const t = self.Module.get_transcribed();
+      if (t && t.length > 0) {
+        text = t;
+        break;
+      }
+    }
 
-    return { text: result.text, confidence };
+    let confidence = self.Module.get_confidence();
+
+    if (!text) {
+      throw new Error('Transcription timed out.');
+    }
+
+    return { text, confidence };
   },
 };
 
