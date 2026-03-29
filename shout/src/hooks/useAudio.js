@@ -77,9 +77,8 @@ export function useAudioCapture() {
       }
     });
 
-    // Convert chunks to ArrayBuffer
+    // Build a single blob from all recorded chunks
     const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-    const arrayBuffer = await blob.arrayBuffer();
 
     // Reset state
     chunksRef.current = [];
@@ -88,6 +87,7 @@ export function useAudioCapture() {
     streamRef.current = null;
 
     // Decode to 16kHz Float32Array for Whisper
+    const arrayBuffer = await blob.arrayBuffer();
     const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     const audio = audioBuffer.getChannelData(0);

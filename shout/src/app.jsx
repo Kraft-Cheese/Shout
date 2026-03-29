@@ -23,8 +23,8 @@ export function App() {
   return (
     <main id="shout-app">
       <header class="app-header">
-        <h1>Shout</h1>
-        <p>Privacy-preserving ASR</p>
+        <h1>SHOUT</h1>
+        <p>Private, on-device ASR</p>
       </header>
 
       <div class="main-card">
@@ -41,12 +41,6 @@ export function App() {
         <Output />
       </div>
 
-      <footer class="app-footer">
-        <small>
-          All processing happens locally in your browser.
-          No data is sent to any server.
-        </small>
-      </footer>
     </main>
   );
 }
