@@ -207,61 +207,105 @@ const api = {
       await ensureWasmLoaded();
       console.log('[whisper] WASM ready, proceeding to model fetch');
 
-      const modelSize = IS_MOBILE ? 'tiny' : 'base';
+      // Fine-tuned LoRA models are whisper-small; generic languages fall back
+      // to whisper-tiny (mobile) or whisper-base (desktop).
+      const FINE_TUNED_LANGS = new Set(['sei', 'ncx']);
+      const modelSize = FINE_TUNED_LANGS.has(language)
+        ? 'small'
+        : IS_MOBILE ? 'tiny' : 'base';
       const modelUrl = await resolveModelUrl(modelSize, language, quantized);
       console.log('[whisper] Model URL:', modelUrl, 'IS_MOBILE=', IS_MOBILE);
 
-      console.log('[whisper] Fetching model...');
-      const response = await fetch(modelUrl);
-      if (!response.ok) {
-        throw new Error(`Model fetch failed for ${modelUrl}: HTTP ${response.status}`);
-      }
+      const MODEL_CACHE = 'shout-models-v1';
 
-      const responseType = response.headers.get('Content-Type') || '';
-      if (responseType.includes('text/html')) {
-        throw new Error(
-          `Model fetch returned HTML for ${modelUrl}. Check filename/path and dev-server static file routing.`
-        );
-      }
-
-      const contentLength = response.headers.get('Content-Length');
-      const total = contentLength ? parseInt(contentLength, 10) : null;
-      console.log('[whisper] Content-Length:', total);
-
-      const reader = response.body.getReader();
-      const chunks = [];
-      let received = 0;
-      let lastReportedPct = -1;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.byteLength;
-        if (onProgress && total) {
-          const pct = Math.floor((received / total) * 100);
-          if (pct > lastReportedPct) {
-            lastReportedPct = pct;
-            console.log('[whisper] Download progress:', pct, '%');
-            onProgress({ received, total, ratio: received / total });
+      // Check if the model is already in the Cache API (persists across sessions).
+      let buffer = null;
+      if (typeof caches !== 'undefined') {
+        try {
+          const cache = await caches.open(MODEL_CACHE);
+          const cached = await cache.match(modelUrl);
+          if (cached) {
+            console.log('[whisper] Model found in cache, loading...');
+            if (onProgress) onProgress({ received: 1, total: 1, ratio: 0.99, cached: true });
+            const ab = await cached.arrayBuffer();
+            buffer = new Uint8Array(ab);
+            console.log('[whisper] Model loaded from cache, bytes=', buffer.byteLength);
+            if (onProgress) onProgress({ received: buffer.byteLength, total: buffer.byteLength, ratio: 1.0, cached: true });
           }
+        } catch (cacheErr) {
+          console.warn('[whisper] Cache read failed, will fetch from network:', cacheErr.message);
         }
       }
 
-      console.log('[whisper] Download complete, received', received, 'bytes');
-      if (received < 1024 * 1024) {
-        throw new Error(
-          `Downloaded model is too small (${received} bytes). This usually means an HTML fallback or wrong model filename.`
-        );
-      }
+      if (!buffer) {
+        console.log('[whisper] Fetching model from network...');
+        const response = await fetch(modelUrl);
+        if (!response.ok) {
+          throw new Error(`Model fetch failed for ${modelUrl}: HTTP ${response.status}`);
+        }
 
-      if (onProgress) onProgress({ received, total: received, ratio: 1.0 });
+        const responseType = response.headers.get('Content-Type') || '';
+        if (responseType.includes('text/html')) {
+          throw new Error(
+            `Model fetch returned HTML for ${modelUrl}. Check filename/path and dev-server static file routing.`
+          );
+        }
 
-      const buffer = new Uint8Array(received);
-      let offset = 0;
-      for (const chunk of chunks) {
-        buffer.set(chunk, offset);
-        offset += chunk.byteLength;
+        const contentLength = response.headers.get('Content-Length');
+        const total = contentLength ? parseInt(contentLength, 10) : null;
+        console.log('[whisper] Content-Length:', total);
+
+        const reader = response.body.getReader();
+        const chunks = [];
+        let received = 0;
+        let lastReportedPct = -1;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.byteLength;
+          if (onProgress && total) {
+            const pct = Math.floor((received / total) * 100);
+            if (pct > lastReportedPct) {
+              lastReportedPct = pct;
+              console.log('[whisper] Download progress:', pct, '%');
+              onProgress({ received, total, ratio: received / total });
+            }
+          }
+        }
+
+        console.log('[whisper] Download complete, received', received, 'bytes');
+        if (received < 1024 * 1024) {
+          throw new Error(
+            `Downloaded model is too small (${received} bytes). This usually means an HTML fallback or wrong model filename.`
+          );
+        }
+
+        if (onProgress) onProgress({ received, total: received, ratio: 1.0 });
+
+        buffer = new Uint8Array(received);
+        let offset = 0;
+        for (const chunk of chunks) {
+          buffer.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+
+        // Store in Cache API for offline use on subsequent loads.
+        if (typeof caches !== 'undefined') {
+          try {
+            const cache = await caches.open(MODEL_CACHE);
+            await cache.put(
+              modelUrl,
+              new Response(buffer.buffer, {
+                headers: { 'Content-Type': 'application/octet-stream' },
+              })
+            );
+            console.log('[whisper] Model stored in cache for offline use.');
+          } catch (cacheErr) {
+            console.warn('[whisper] Cache write failed (non-fatal):', cacheErr.message);
+          }
+        }
       }
 
       console.log('[whisper] Writing model to WASM FS...');

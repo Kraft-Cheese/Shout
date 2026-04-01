@@ -41,6 +41,8 @@ export function Output() {
                 />
               </div>
             </div>
+          ) : State.loadPhase.value === 'cached' ? (
+            <span>Loading model from cache...</span>
           ) : State.loadPhase.value === 'initializing' ? (
             <span>Initializing model...</span>
           ) : (

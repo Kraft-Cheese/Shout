@@ -140,9 +140,12 @@ export async function loadModel(language) {
       ? fetchVocab(language)
       : Promise.resolve(null);
 
-    const onProgress = Comlink.proxy(({ ratio }) => {
-      if (ratio >= 1.0) {
-        // Download complete
+    const onProgress = Comlink.proxy(({ ratio, cached }) => {
+      if (cached) {
+        // Model is being read from local cache, no download progress needed
+        State.loadPhase.value = ratio >= 1.0 ? 'initializing' : 'cached';
+        State.downloadProgress.value = null;
+      } else if (ratio >= 1.0) {
         State.downloadProgress.value = 1;
         State.loadPhase.value = 'initializing';
       } else {
