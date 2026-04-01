@@ -7,7 +7,7 @@ From the whisper.cpp repository root:
 1. Install Emscripten and activate it in your shell.
 2. Configure and build the stream example for WASM.
 
-Us these commands command flow:
+Use these commands (command flow):
 
 - emcmake cmake -S . -B build-wasm -DWHISPER_WASM_SINGLE_FILE=ON
 - cmake --build build-wasm -j
