@@ -1,0 +1,205 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{float}
+
+\setstretch{1.1}
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
+
+\title{Shout Project Midway Report\\\large Post-ASR Morphological Reconstruction for Polysynthetic Languages}
+\author{Project Team}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+This midway report summarizes the current status of \textbf{Shout}, a privacy-preserving speech recognition project targeting low-resource polysynthetic languages, with current emphasis on \textit{Seri (sei)} and \textit{Central Puebla Nahuatl (ncx)}. The project combines on-device Whisper inference in a browser (Whisper.cpp compiled to WebAssembly) with a lightweight post-processing reconstruction stage that corrects low-confidence outputs using language-specific lexicons. At this point, the system has a functioning browser inference pipeline, adapter training/merge scripts, baseline evaluation assets, and reconstruction improvements on offline benchmarks. The immediate technical milestone is to finalize the model deployment path by producing and validating \texttt{.bin} model artifacts compatible with Whisper.cpp for the target languages, then routing them robustly in the web application. This report details architecture, completed work, quantitative progress, known limitations, and a concrete plan for the next project phase.
+\end{abstract}
+
+\newpage
+
+\section{Project Motivation and Midway Objectives}
+Modern ASR systems perform poorly on many polysynthetic and low-resource languages because tokenization and lexical priors are misaligned with their morphology. In practical terms, this creates transcription outputs with fragmented stems, incorrect boundaries, and high substitution rates. The Shout project frames this as a two-stage pipeline:
+\begin{enumerate}[leftmargin=1.3em]
+    \item \textbf{Stage A (ASR):} obtain noisy-but-usable transcription hypotheses from Whisper in-browser.
+    \item \textbf{Stage B (Reconstruction):} use language-constrained lexical correction to improve downstream readability and linguistic fidelity, especially on low-confidence tokens.
+\end{enumerate}
+
+At the midway point, the team objective is no longer broad prototyping; it is now deployment stabilization: \textbf{producing Whisper.cpp-compatible binary model files (\texttt{.bin}) for the tuned models and integrating them into the runtime model loader}. This is aligned with the repository README guidance and existing conversion script pathway.
+
+\section{Current System Architecture}
+\subsection{Frontend and Runtime Stack}
+The web app is built with Vite + Preact and exposes a simple transcription workflow: select language, record or upload audio, transcribe, and display output. The UI initializes a worker bridge on startup and triggers model loading automatically for the selected language.
+
+The design cleanly separates concerns:
+\begin{itemize}[leftmargin=1.3em]
+    \item \textbf{Main thread/UI:} orchestration, user interaction, status updates.
+    \item \textbf{Worker bridge:} confidence estimation, token sanitization, reconstruction triggers, and state updates.
+    \item \textbf{Whisper worker thread:} WASM runtime initialization, model fetch/caching, FS mounting, and transcription execution.
+\end{itemize}
+
+\subsection{Whisper.cpp WebAssembly Integration}
+The current README specifies a build flow for Whisper.cpp into WASM artifacts (\texttt{stream.js}, \texttt{main.js}, \texttt{libmain.js}, \texttt{helpers.js}) and placement in \texttt{shout/public/wasm}. The worker checks for runtime availability and fails fast if WASM assets are missing. The initialization is guarded by watchdog handling and retry-safe logic to avoid hanging states.
+
+Model loading already includes practical safeguards:
+\begin{itemize}[leftmargin=1.3em]
+    \item candidate URL resolution based on naming conventions,
+    \item HEAD checks to avoid accidentally loading HTML fallback pages,
+    \item size heuristics to reject invalid responses,
+    \item Cache API persistence for offline reuse and improved subsequent load times.
+\end{itemize}
+
+\subsection{Language-Aware Model Routing}
+Routing currently distinguishes \texttt{sei}/\texttt{ncx} as fine-tuned languages and maps them to \texttt{whisper-small} artifacts, while generic usage selects \texttt{tiny} (mobile) or \texttt{base} (desktop). This policy is sensible for balancing quality and footprint, but it depends on correct binary artifact generation and naming (e.g., \texttt{whisper-small-sei-q5.bin}, \texttt{whisper-small-ncx-q5.bin}).
+
+\section{Data and Training Pipeline Status}
+\subsection{Dataset Ingestion and Preparation}
+The repository includes modular scripts to:
+\begin{enumerate}[leftmargin=1.3em]
+    \item download Common Voice/OpenSLR inputs,
+    \item package offline archives for restricted environments,
+    \item normalize transcripts and audio,
+    \item filter low-quality samples,
+    \item deduplicate entries,
+    \item build leakage-aware train/validation/test manifests.
+\end{enumerate}
+
+This is a strong engineering foundation because reproducible data preparation is essential for robust low-resource ASR benchmarking. The scripts emphasize safety (e.g., tar extraction checks) and practical operational constraints (offline reuse).
+
+\subsection{LoRA Fine-Tuning Baseline (B2)}
+A dedicated training script fine-tunes \texttt{openai/whisper-small} with LoRA adapters for each language. Notable strengths of the implementation include:
+\begin{itemize}[leftmargin=1.3em]
+    \item explicit compatibility patching for PEFT/Whisper forward kwargs,
+    \item standard ASR metrics (WER, CER) via \texttt{evaluate},
+    \item configurable output for language-specific adapters,
+    \item reproducibility controls through fixed seeds and explicit hyperparameters.
+\end{itemize}
+
+The adapter artifacts for both languages are already present in the repository, meaning training outputs exist and can be merged for deployment.
+
+\subsection{Merge and Conversion Pipeline}
+The key midway requirement (creating deployable model binaries) is already scaffolded by \texttt{merge\_and\_convert.py}, which performs:
+\begin{enumerate}[leftmargin=1.3em]
+    \item merge LoRA adapter into Whisper-small,
+    \item convert merged model to GGML format,
+    \item quantize to Q5 (\texttt{q5\_0}),
+    \item install binaries into \texttt{shout/public/models} with app-compatible names.
+\end{enumerate}
+
+Operationally, this is the critical bridge between training and browser deployment. The script also handles \texttt{mel\_filters.npz} provisioning for offline compatibility and validates converter/quantizer dependencies.
+
+\section{Evaluation Snapshot and Midway Interpretation}
+The project tracks baseline progression (B1--B4) through JSON metrics and an aggregated tracker. At this stage, the most informative findings are:
+
+\begin{table}[H]
+\centering
+\caption{Midway quantitative summary from repository artifacts.}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Language} & \textbf{WER (B1)} & \textbf{WER after B4} & \textbf{Absolute $\Delta$WER} & \textbf{Token-F1 $\Delta$ (B4)} \\
+\midrule
+sei & 1.3512 & 1.3384 & -0.0129 & +0.0177 \\
+ncx & 1.7771 & 1.6780 & -0.0991 & +0.0906 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent Interpretation:
+\begin{itemize}[leftmargin=1.3em]
+    \item Reconstruction is consistently beneficial on current benchmarks, with significantly larger gains for \texttt{ncx} than \texttt{sei}.
+    \item Morpheme/token-level F1 improvements indicate reconstruction helps not only raw error counts but also linguistic structure quality.
+    \item Absolute WER values remain high, which is expected for difficult low-resource settings and signals that model deployment plus additional adaptation are still required.
+\end{itemize}
+
+\section{What Is Completed vs. What Is Blocking}
+\subsection{Completed Milestones}
+\begin{itemize}[leftmargin=1.3em]
+    \item Browser worker architecture with on-device WASM inference path is functional.
+    \item Confidence-aware reconstruction logic is implemented in both Python (offline eval) and JavaScript (runtime).
+    \item LoRA adapters and baseline evaluation artifacts for \texttt{sei}/\texttt{ncx} are present.
+    \item Conversion script exists for merged + quantized deployment binaries.
+\end{itemize}
+
+\subsection{Current Blocker (Midway Critical Path)}
+The immediate blocker is \textbf{end-to-end validation of Whisper binary generation and runtime loading}. In practical terms, this means:
+\begin{enumerate}[leftmargin=1.3em]
+    \item produce language binaries from adapters using the merge/convert pipeline,
+    \item verify exact naming and placement under \texttt{public/models},
+    \item test worker route resolution and loading behavior in dev/prod,
+    \item confirm transcription quality and latency on representative samples.
+\end{enumerate}
+
+Without this step, the tuned models cannot actually be exercised in the browser despite successful training artifacts.
+
+\section{Next-Phase Execution Plan}
+\subsection{Phase 1: Binary Model Production (Immediate)}
+\begin{enumerate}[leftmargin=1.3em]
+    \item Build Whisper.cpp native tools (converter + quantizer).
+    \item Run \texttt{merge\_and\_convert.py} for \texttt{sei} and \texttt{ncx} (prefer quantized outputs for browser constraints).
+    \item Validate output file sizes and checksums; ensure deterministic naming with \texttt{-q5} suffix expected by worker logic.
+\end{enumerate}
+
+\subsection{Phase 2: Runtime Validation and Profiling}
+\begin{enumerate}[leftmargin=1.3em]
+    \item Load each language in the web app and verify no HTML-fallback false loads.
+    \item Record first-load vs warm-cache load times.
+    \item Measure inference latency and real-time factor across short and medium utterances.
+\end{enumerate}
+
+\subsection{Phase 3: Quality and Risk Reduction}
+\begin{enumerate}[leftmargin=1.3em]
+    \item Expand evaluation beyond aggregate WER/CER: token confidence calibration and failure clustering.
+    \item Tune reconstruction threshold $\tau$ per language.
+    \item Add lightweight reporting panel in UI for reconstruction-on/off comparisons.
+\end{enumerate}
+
+\section{Risk Register and Mitigations}
+\begin{longtable}{@{}p{0.24\linewidth}p{0.34\linewidth}p{0.34\linewidth}@{}}
+\toprule
+\textbf{Risk} & \textbf{Impact} & \textbf{Mitigation} \\
+\midrule
+Model artifact mismatch (name/path) & Worker cannot resolve or loads invalid fallback payloads & Enforce naming contract in CI script; add startup checks for expected binaries. \\
+Large model footprint on constrained devices & Slow startup or memory pressure & Default to quantized q5 models, cache aggressively, consider tiny/base fallback policy by device class. \\
+Over-correction in lexicon reconstruction & Linguistic corruption for confident tokens & Keep uncertainty-trigger gate and token-level selective correction only below threshold. \\
+Dataset/domain mismatch & Inflated WER despite improved pipeline & Expand data curation and add targeted held-out test slices per domain/speaker profile. \\
+\bottomrule
+\end{longtable}
+
+\section{Conclusion}
+At midway, Shout has successfully transitioned from concept exploration to a largely operational architecture: browser inference, confidence-aware post-processing, and reproducible experimentation are in place. The project's central remaining engineering milestone is to finalize and validate deployment-grade Whisper binaries for \texttt{sei}/\texttt{ncx}, which unlocks full end-to-end testing of the tuned model pathway in the live web stack.
+
+The evidence so far supports the core hypothesis: combining a base ASR channel with morphology-aware reconstruction can improve transcription quality for low-resource polysynthetic contexts. The next phase should prioritize binary artifact readiness, runtime validation, and tighter measurement loops to convert promising offline gains into reliable, user-facing performance.
+
+\begin{thebibliography}{9}
+\bibitem{shout-root}
+Shout Repository, \textit{README.md}, project overview and TODOs.
+
+\bibitem{shout-web}
+Shout Web App, \textit{shout/README.md}, Whisper.cpp WASM and model naming conventions.
+
+\bibitem{lora-train}
+Shout ASR Model Scripts, \textit{sei\_ncx\_asr\_model/whisper\_lora\_train.py}.
+
+\bibitem{merge-convert}
+Shout ASR Model Scripts, \textit{sei\_ncx\_asr\_model/merge\_and\_convert.py}.
+
+\bibitem{b4-reconstruct}
+Shout ASR Model Scripts, \textit{sei\_ncx\_asr\_model/reconstruct\_b4.py}.
+
+\bibitem{worker-runtime}
+Shout Worker Runtime, \textit{shout/src/workers/whisper.workerThread.js}, \textit{shout/src/workers/worker.js}.
+\end{thebibliography}
+
+\end{document}
