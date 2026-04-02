@@ -1,0 +1,158 @@
+\documentclass[11pt]{article}
+
+% Change "review" to "final" for camera-ready, or "preprint" for a non-anonymous version with page numbers.
+\usepackage{acl}
+
+% Standard ACL packages
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+
+% Additional packages used by this report
+\setcitestyle{numbers}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{amsmath}
+
+\title{Shout: Offline Browser-Based ASR with Post-ASR Morphological Reconstruction for Polysynthetic Languages}
+\author{Jean-Christophe Clouâtre, Cassandre Hamel, Vennila Sooben, Imad Benahmed \\
+Affiliation\\
+\texttt{jean-christophe.clouatre@umontreal.ca, cassandre.hamel.1@umontreal.ca,}\\
+\texttt{vennila.sooben@umontreal.ca, imad.benahmed@umontreal.ca}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This midway report summarizes the current progress of \textbf{Shout}, a privacy-preserving speech recognition project targeting low-resource and morphologically complex languages, with current emphasis on \textit{Seri (sei)} and \textit{Central Puebla Nahuatl (ncx)}. The project combines browser-based Whisper inference compiled to WebAssembly with a lightweight post-processing stage that performs lexical reconstruction on low-confidence outputs using language-specific vocabularies. So far, we have implemented a functional browser inference pipeline, dataset preparation scripts, baseline evaluation assets, adapter training and merge utilities, and preliminary reconstruction improvements on offline benchmarks. Our current focus is to complete the deployment path by producing and validating Whisper.cpp-compatible \texttt{.bin} model artifacts for the target languages and integrating them robustly into the web runtime. The results obtained so far suggest that confidence-aware reconstruction can improve transcription quality, especially for more difficult low-resource settings, while the next phase will emphasize end-to-end deployment validation and systematic quantitative evaluation.
+\end{abstract}
+
+\section{Introduction}
+Automatic speech recognition (ASR) systems have improved substantially for high-resource languages, but performance remains limited for many low-resource and morphologically complex languages. This is particularly challenging in polysynthetic settings, where long words often encode information that would be spread across multiple words in other languages. As a result, standard subword-based ASR systems may produce outputs with incorrect segmentation, fragmented stems, and high substitution rates.
+
+In parallel, browser-based inference is increasingly attractive for privacy, offline access, and low-friction deployment. However, deploying ASR models directly in the browser introduces additional practical constraints, including limited runtime resources, model size restrictions, and compatibility between research checkpoints and deployment artifacts.
+
+The goal of \textbf{Shout} is to explore whether a lightweight offline browser ASR pipeline can be made practical for under-supported languages, while also improving transcription quality through post-ASR morphological reconstruction. Our current system combines two stages: (1) on-device Whisper inference in the browser, and (2) confidence-aware lexical reconstruction that selectively corrects low-confidence outputs using language-specific vocabularies.
+
+At the midway stage, our project has moved beyond broad prototyping. We now have a functional browser inference pipeline, data preparation scripts, baseline evaluation tools, and reconstruction modules for the target languages. The main remaining challenge is to complete the deployment path for the adapted models by producing deployable binary model artifacts and validating them end-to-end in the web application.
+
+\section{Related Work}
+Recent multilingual ASR systems have demonstrated strong zero-shot and transfer capabilities across many languages, with Whisper serving as a particularly strong baseline due to its large-scale multilingual training. However, performance on low-resource languages remains substantially lower than on high-resource settings, especially when target languages are underrepresented in pretraining data or exhibit complex morphology.
+
+To address this gap, prior work has explored language adaptation through fine-tuning and parameter-efficient methods such as LoRA, which reduce training cost while still allowing domain- or language-specific specialization. These methods are especially attractive when compute resources are limited or when deployment constraints require relatively compact adaptation pipelines.
+
+A separate line of work has shown that linguistically informed post-processing can improve outputs for morphologically rich languages. In such settings, lexical constraints or morphology-aware correction may help recover more plausible surface forms after ASR inference. Our project is positioned at the intersection of these directions: we investigate an offline browser deployment of Whisper for low-resource languages, while augmenting the transcription pipeline with confidence-aware reconstruction tailored to target-language lexical structure.
+
+\section{Methods}
+
+\subsection{Browser-Based ASR Pipeline}
+The web application is implemented with Vite and Preact and provides a simple workflow in which users select a language, record or upload audio, and receive a transcription directly in the browser. The system separates inference from the main interface through a worker-based design.
+
+The runtime architecture is divided into three layers:
+\begin{itemize}
+    \item \textbf{Main thread / UI:} handles user interaction, status updates, and result display.
+    \item \textbf{Worker bridge:} manages confidence estimation, token sanitization, reconstruction triggers, and state updates.
+    \item \textbf{Whisper worker thread:} handles WebAssembly runtime initialization, model loading, local file system mounting, and transcription execution.
+\end{itemize}
+
+This separation improves responsiveness and makes it possible to keep the transcription pipeline off the main UI thread.
+
+\subsection{Whisper.cpp WebAssembly Integration}
+The current implementation relies on Whisper.cpp compiled to WebAssembly. Runtime assets are placed under \texttt{shout/public/wasm}, and the worker checks that these assets are available before attempting initialization. The model loader includes several safeguards intended to make browser deployment more robust:
+\begin{itemize}
+    \item candidate URL resolution based on model naming conventions,
+    \item validation checks to avoid loading invalid HTML fallback responses,
+    \item size-based heuristics to reject suspicious files,
+    \item browser caching for offline reuse and improved warm-start performance.
+\end{itemize}
+
+These safeguards are important because the browser deployment path is sensitive to asset placement, file naming, and runtime availability.
+
+\subsection{Confidence-Aware Morphological Reconstruction}
+The second stage of the system applies selective post-ASR correction when the model output is uncertain. After transcription, the worker estimates token-level confidence and triggers reconstruction only when confidence falls below a threshold. The reconstruction procedure uses language-specific lexical resources to guide the output toward more plausible forms.
+
+This design aims to avoid over-correcting already reliable transcriptions while still helping in the cases where Whisper is uncertain. In the current repository, this mechanism is implemented both in the offline Python evaluation pipeline and in the JavaScript browser runtime, enabling comparable behavior across experimentation and deployment.
+
+\subsection{Data Preparation and Model Adaptation}
+The repository includes scripts for downloading and preparing speech datasets from sources such as Common Voice and OpenSLR. These scripts support transcript normalization, audio conversion, low-quality filtering, deduplication, and construction of train/validation/test manifests. This provides a reproducible foundation for evaluation and model development.
+
+For model adaptation, we use LoRA-based fine-tuning of \texttt{openai/whisper-small}. The repository already contains adapter artifacts for both target languages. A separate merge-and-convert pipeline is used to merge LoRA adapters into the base model, convert the result to GGML format, quantize the model, and install deployment-ready binaries into the browser application's model directory. This pipeline is the key bridge between offline experimentation and browser deployment.
+
+\section{Experiments}
+
+\subsection{Datasets}
+Our current experiments focus on low-resource target languages including \textit{Seri (sei)} and \textit{Central Puebla Nahuatl (ncx)}. The repository includes scripts for downloading and preparing Common Voice and OpenSLR-style data, with preprocessing steps that normalize transcripts, standardize audio, remove low-quality samples, and construct train/validation/test splits.
+
+These preparation scripts are an important part of the experimental setup because low-resource benchmarks are especially sensitive to data quality, duplication, and leakage across splits.
+
+\subsection{Baselines}
+The project currently tracks progress through multiple baseline stages:
+\begin{itemize}
+    \item \textbf{B1:} zero-shot \texttt{whisper-small},
+    \item \textbf{B2:} language-specific LoRA-adapted Whisper models,
+    \item \textbf{B4:} post-ASR lexical reconstruction applied to model outputs.
+\end{itemize}
+
+At the midway stage, the most complete quantitative evidence comes from the zero-shot baseline and the reconstruction-enhanced outputs. Adapted models have already been trained and prepared for merging, but browser deployment validation remains ongoing.
+
+\subsection{Evaluation Methods}
+We use standard ASR error metrics, including word error rate (WER), and also track morphology-sensitive quality through token-level or morpheme-level F1 improvements. This combination is important because raw transcription error rates do not fully capture whether a predicted form is structurally closer to the target language output.
+
+In our setting, reconstruction is intended not only to reduce overall error, but also to improve the linguistic plausibility of the transcription, particularly in cases involving segmentation or lexical recovery.
+
+\subsection{Experimental Details}
+The current implementation uses \texttt{openai/whisper-small} as the main ASR backbone. Fine-tuned language adapters are produced through LoRA training, then merged and quantized for deployment-oriented use. The web runtime distinguishes target-language models from generic usage and routes them according to expected file names in the browser model directory.
+
+At the present stage, the central experimental bottleneck is not training itself, but the final validation of deployment-grade binary artifacts and their correct loading in the web application. This step is required to ensure that the adapted models can be exercised end-to-end in the live browser environment.
+
+\subsection{Results}
+Table~\ref{tab:midway-results} presents a preliminary quantitative summary based on the current repository artifacts.
+
+\begin{table}[t]
+\centering
+\caption{Preliminary evaluation results for baseline and reconstruction-enhanced systems.}
+\label{tab:midway-results}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Language} & \textbf{WER (B1)} & \textbf{WER after B4} & \textbf{Absolute $\Delta$WER} & \textbf{Token-F1 $\Delta$ (B4)} \\
+\midrule
+sei & 1.3512 & 1.3384 & -0.0129 & +0.0177 \\
+ncx & 1.7771 & 1.6780 & -0.0991 & +0.0906 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These results suggest that reconstruction is beneficial for both target languages, with substantially larger gains for \texttt{ncx} than for \texttt{sei}. The improvements in token-level F1 indicate that the post-processing stage helps not only raw error counts, but also the structural quality of the predicted output. At the same time, the absolute WER values remain high, which is expected in difficult low-resource settings and further motivates continued adaptation and deployment work.
+
+Overall, the current results support the central hypothesis of the project: combining a base ASR channel with morphology-aware reconstruction can improve transcription quality for under-supported, morphologically complex languages.
+
+\section{Future Work (Next 4 Weeks)}
+Our remaining work is organized into four short-term milestones.
+
+\paragraph{Week 1.}
+Finalize deployable model binaries for \texttt{sei} and \texttt{ncx} using the merge-and-convert pipeline, verify expected file names and placement under \texttt{public/models}, and validate their integrity through file-size and dependency checks.
+
+\paragraph{Week 2.}
+Test end-to-end model loading in the browser for both languages, verify that the runtime does not accidentally load fallback responses, and measure first-load versus warm-cache behavior.
+
+\paragraph{Week 3.}
+Run systematic evaluation of browser-side transcription and reconstruction, including latency measurements, reconstruction threshold tuning, and targeted error analysis on representative utterances.
+
+\paragraph{Week 4.}
+Consolidate quantitative and qualitative results, compare baseline and reconstruction-enhanced settings, and prepare the final report figures, analysis, and discussion.
+
+\section{Task Division}
+The project is divided across major components of the system. One part of the team focuses on browser integration, including the frontend, worker pipeline, and runtime model loading. Another part focuses on data preparation, offline experimentation, and evaluation. A third part focuses on reconstruction logic, deployment conversion, and final analysis. Report writing and interpretation of results are shared across the team, with each member contributing to the sections most closely aligned with their technical responsibilities.
+
+\section{Conclusion}
+At the midway stage, \textbf{Shout} has progressed from an exploratory concept to a largely operational research prototype. The browser inference architecture, confidence-aware reconstruction logic, and reproducible experimentation pipeline are all in place. The main remaining challenge is to complete and validate deployment-grade binary model artifacts for the target languages so that the adapted models can be tested directly in the live browser stack.
+
+The preliminary evidence obtained so far supports the project's core idea: an offline browser ASR system for low-resource polysynthetic languages becomes more promising when paired with selective, morphology-aware post-processing. The next phase will focus on converting these encouraging offline results into reliable end-to-end deployment and stronger quantitative evaluation.
+
+\nocite{*}
+\bibliography{custom}
+\end{document}
