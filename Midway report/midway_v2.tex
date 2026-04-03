@@ -53,31 +53,40 @@ A separate but complementary line of work has studied post-ASR correction. In pa
 
 \section{Methods}
 
-\begin{figure*}[t]
-\centering
-\begin{tikzpicture}[
-node distance=0.9cm and 0.7cm,
-box/.style={draw, rounded corners, align=center, minimum width=2.4cm, minimum height=0.9cm},
-arrow/.style={-{Latex[length=2mm]}, thick}
-]
-\node[box] (audio) {User audio};
-\node[box, right=of audio] (ui) {Browser UI\\(Preact/Vite)};
-\node[box, right=of ui] (bridge) {Worker bridge\\sanitization + confidence};
-\node[box, right=of bridge] (wasm) {Whisper WASM\\worker thread};
-\node[box, below=of bridge] (recon) {Reconstruction\\language vocab};
-\node[box, below=of wasm] (tokens) {Transcript + tokens\\probabilities};
-\node[box, below=of ui] (out) {Final transcript\\and metrics};
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1.1\linewidth]{figure1.png}
+    \caption{Overall Shout architecture. Audio is processed in-browser through a worker-based Whisper WebAssembly pipeline. The worker computes confidence scores and conditionally applies language-specific reconstruction before returning the final transcript.}
+    \label{fig:example}
+\end{figure}
 
-\draw[arrow] (audio) -- (ui);
-\draw[arrow] (ui) -- (bridge);
-\draw[arrow] (bridge) -- (wasm);
-\draw[arrow] (wasm) -- (tokens);
-\draw[arrow] (tokens) -- (recon);
-\draw[arrow] (recon) -- (out);
-\end{tikzpicture}
-\caption{Overall Shout architecture. Audio is processed in-browser through a worker-based Whisper WebAssembly pipeline. The worker computes confidence scores and conditionally applies language-specific reconstruction before returning the final transcript.}
-\label{fig:architecture}
-\end{figure*}
+% \begin{figure*}[t]
+% \centering
+% \begin{tikzpicture}[
+% node distance=0.9cm and 0.7cm,
+% box/.style={draw, rounded corners, align=center, minimum width=2.4cm, minimum height=0.9cm},
+% arrow/.style={-{Latex[length=2mm]}, thick}
+% ]
+% \node[box] (audio) {User audio};
+% \node[box, right=of audio] (ui) {Browser UI\\(Preact/Vite)};
+% \node[box, right=of ui] (bridge) {Worker bridge\\sanitization + confidence};
+% \node[box, right=of bridge] (wasm) {Whisper WASM\\worker thread};
+% \node[box, below=of bridge] (recon) {Reconstruction\\language vocab};
+% \node[box, below=of wasm] (tokens) {Transcript + tokens\\probabilities};
+% \node[box, below=of ui] (out) {Final transcript\\and metrics};
+
+% \draw[arrow] (audio) -- (ui);
+% \draw[arrow] (ui) -- (bridge);
+% \draw[arrow] (bridge) -- (wasm);
+% \draw[arrow] (wasm) -- (tokens);
+% \draw[arrow] (tokens) -- (recon);
+% \draw[arrow] (recon) -- (out);
+% \end{tikzpicture}
+% \caption{Overall Shout architecture. Audio is processed in-browser through a worker-based Whisper WebAssembly pipeline. The worker computes confidence scores and conditionally applies language-specific reconstruction before returning the final transcript.}
+% \label{fig:architecture}
+% \end{figure*}
+
+
 
 \subsection{Browser-Based ASR Pipeline}
 The web application is implemented with Vite and Preact and provides a simple workflow in which users select a language, record or upload audio, and receive a transcription directly in the browser. The system separates inference from the main interface through a worker-based design.
@@ -105,7 +114,7 @@ These safeguards are important because the browser deployment path is sensitive 
 \subsection{Confidence-Aware Morphological Reconstruction}
 The second stage of the system applies selective post-ASR correction when the model output is uncertain. After transcription, the worker estimates token-level confidence and triggers reconstruction only when confidence falls below a threshold. The reconstruction procedure uses language-specific lexical resources to guide the output toward more plausible forms.
 
-This design aims to avoid over-correcting already reliable transcriptions while still helping in the cases where Whisper is uncertain. In the current repository, this mechanism is implemented both in the offline Python evaluation pipeline and in the JavaScript browser runtime, enabling comparable behavior across experimentation and deployment. (see \ref{alg:reconstruct})
+This design aims to avoid over-correcting already reliable transcriptions while still helping in the cases where Whisper is uncertain. In the current repository, this mechanism is implemented both in the offline Python evaluation pipeline and in the JavaScript browser runtime, enabling comparable behavior across experimentation and deployment. (see Algorithm~\ref{alg:reconstruct})
 
 \begin{algorithm}[t]
 \caption{Confidence-aware post-ASR reconstruction}
@@ -221,58 +230,72 @@ The preliminary evidence obtained so far supports the project's core idea: an of
 \appendix
 \section{Extra figures}
 
+% \begin{figure}[t]
+% \centering
+% \begin{tikzpicture}[
+% node distance=0.55cm,
+% box/.style={draw, rounded corners, align=center, minimum width=2.9cm, minimum height=0.72cm},
+% arrow/.style={-{Latex[length=2mm]}, thick}
+% ]
+% \node[box] (start) {Initialize worker};
+% \node[box, below=of start] (wasm) {Check WASM availability};
+% \node[box, below=of wasm] (resolve) {Resolve model URL candidates};
+% \node[box, below=of resolve] (head) {HEAD validation};
+% \node[box, below=of head] (load) {Load model into FS};
+% \node[box, below=of load] (transcribe) {Transcribe audio};
+% \node[box, below=of transcribe] (conf) {Sanitize + compute confidence};
+% \node[box, below=of conf] (recon) {Low-confidence?\\load vocab + reconstruct};
+% \node[box, below=of recon] (display) {Display transcript};
+
+% \draw[arrow] (start) -- (wasm);
+% \draw[arrow] (wasm) -- (resolve);
+% \draw[arrow] (resolve) -- (head);
+% \draw[arrow] (head) -- (load);
+% \draw[arrow] (load) -- (transcribe);
+% \draw[arrow] (transcribe) -- (conf);
+% \draw[arrow] (conf) -- (recon);
+% \draw[arrow] (recon) -- (display);
+% \end{tikzpicture}
+% \caption{Browser runtime inference flow. The app validates runtime assets and model files before transcription, then applies confidence-aware reconstruction only when needed.}
+% \label{fig:runtimeflow}
+% \end{figure}
+
+% \begin{figure}[t]
+%     \centering
+%     \includegraphics[width=1.1\linewidth]{figure2.png}
+%     \caption{Offline experimentation and deployment pipeline. Prepared speech data is used for adaptation, after which merged and quantized models are exported into browser-compatible binaries.}
+% % \label{fig:deploypipeline}
+%     \label{fig:example}
+% \end{figure}
+
+% \begin{figure*}[t]
+% \centering
+% \begin{tikzpicture}[
+% node distance=0.9cm and 0.6cm,
+% box/.style={draw, rounded corners, align=center, minimum width=2.25cm, minimum height=0.9cm},
+% arrow/.style={-{Latex[length=2mm]}, thick}
+% ]
+% \node[box] (raw) {Raw speech corpora\\Common Voice / OpenSLR};
+% \node[box, right=of raw] (prep) {prepData.py\\normalize, filter, deduplicate};
+% \node[box, right=of prep] (train) {LoRA adaptation\\Whisper-small};
+% \node[box, right=of train] (merge) {Merge adapters\\to base model};
+% \node[box, below=of merge] (quant) {GGML conversion\\+ Q5 quantization};
+% \node[box, left=of quant] (deploy) {public/models/*.bin\\browser deployment};
+
+% \draw[arrow] (raw) -- (prep);
+% \draw[arrow] (prep) -- (train);
+% \draw[arrow] (train) -- (merge);
+% \draw[arrow] (merge) -- (quant);
+% \draw[arrow] (quant) -- (deploy);
+% \end{tikzpicture}
+% \caption{Offline experimentation and deployment pipeline. Prepared speech data is used for adaptation, after which merged and quantized models are exported into browser-compatible binaries.}
+% \label{fig:deploypipeline}
+% \end{figure*}
+
 \begin{figure}[t]
-\centering
-\begin{tikzpicture}[
-node distance=0.55cm,
-box/.style={draw, rounded corners, align=center, minimum width=2.9cm, minimum height=0.72cm},
-arrow/.style={-{Latex[length=2mm]}, thick}
-]
-\node[box] (start) {Initialize worker};
-\node[box, below=of start] (wasm) {Check WASM availability};
-\node[box, below=of wasm] (resolve) {Resolve model URL candidates};
-\node[box, below=of resolve] (head) {HEAD validation};
-\node[box, below=of head] (load) {Load model into FS};
-\node[box, below=of load] (transcribe) {Transcribe audio};
-\node[box, below=of transcribe] (conf) {Sanitize + compute confidence};
-\node[box, below=of conf] (recon) {Low-confidence?\\load vocab + reconstruct};
-\node[box, below=of recon] (display) {Display transcript};
-
-\draw[arrow] (start) -- (wasm);
-\draw[arrow] (wasm) -- (resolve);
-\draw[arrow] (resolve) -- (head);
-\draw[arrow] (head) -- (load);
-\draw[arrow] (load) -- (transcribe);
-\draw[arrow] (transcribe) -- (conf);
-\draw[arrow] (conf) -- (recon);
-\draw[arrow] (recon) -- (display);
-\end{tikzpicture}
-\caption{Browser runtime inference flow. The app validates runtime assets and model files before transcription, then applies confidence-aware reconstruction only when needed.}
-\label{fig:runtimeflow}
+    \centering
+    \includegraphics[width=1.1\linewidth]{figure3.png}
+    \caption{Browser runtime inference flow. The app validates runtime assets and model files before transcription, then applies confidence-aware reconstruction only when needed.}
+    \label{fig:example}
 \end{figure}
-
-\begin{figure*}[t]
-\centering
-\begin{tikzpicture}[
-node distance=0.9cm and 0.6cm,
-box/.style={draw, rounded corners, align=center, minimum width=2.25cm, minimum height=0.9cm},
-arrow/.style={-{Latex[length=2mm]}, thick}
-]
-\node[box] (raw) {Raw speech corpora\\Common Voice / OpenSLR};
-\node[box, right=of raw] (prep) {prepData.py\\normalize, filter, deduplicate};
-\node[box, right=of prep] (train) {LoRA adaptation\\Whisper-small};
-\node[box, right=of train] (merge) {Merge adapters\\to base model};
-\node[box, below=of merge] (quant) {GGML conversion\\+ Q5 quantization};
-\node[box, left=of quant] (deploy) {public/models/*.bin\\browser deployment};
-
-\draw[arrow] (raw) -- (prep);
-\draw[arrow] (prep) -- (train);
-\draw[arrow] (train) -- (merge);
-\draw[arrow] (merge) -- (quant);
-\draw[arrow] (quant) -- (deploy);
-\end{tikzpicture}
-\caption{Offline experimentation and deployment pipeline. Prepared speech data is used for adaptation, after which merged and quantized models are exported into browser-compatible binaries.}
-\label{fig:deploypipeline}
-\end{figure*}
-
 \end{document}
