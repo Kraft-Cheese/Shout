@@ -1,6 +1,6 @@
 \documentclass[11pt]{article}
 
-% Change "review" to "final" for camera-ready, or "preprint" for a non-anonymous version with page numbers.
+% % Change "review" to "final" for camera-ready, or "preprint" for a non-anonymous version with page numbers.
 \usepackage{acl}
 
 % Standard ACL packages
@@ -159,14 +159,19 @@ The project currently tracks progress through multiple baseline stages:
 At the midway stage, the most complete quantitative evidence comes from the zero-shot baseline and the reconstruction-enhanced outputs. Adapted models have already been trained and prepared for merging, but browser deployment validation remains ongoing.
 
 \subsection{Evaluation Methods}
-We use standard ASR error metrics, including word error rate (WER), and also track morphology-sensitive quality through token-level or morpheme-level F1 improvements. This combination is important because raw transcription error rates do not fully capture whether a predicted form is structurally closer to the target language output.
+We evaluate transcription quality primarily using \textbf{Word Error Rate (WER)} and \textbf{Character Error Rate (CER)}. Since the project also targets morphologically complex languages, we additionally track morphology-oriented quality using two proxy metrics computed before and after reconstruction:
+\begin{itemize}
+    \item \textbf{Token F1}, which measures overlap between reference and predicted word tokens;
+    \item \textbf{Boundary F1}, which measures agreement in word-boundary positions in the normalized character stream.
+\end{itemize}
 
 In our setting, reconstruction is intended not only to reduce overall error, but also to improve the linguistic plausibility of the transcription, particularly in cases involving segmentation or lexical recovery.
 
 \subsection{Experimental Details}
-The current implementation uses \texttt{openai/whisper-small} as the main ASR backbone. Fine-tuned language adapters are produced through LoRA training, then merged and quantized for deployment-oriented use. The web runtime distinguishes target-language models from generic usage and routes them according to expected file names in the browser model directory.
+The ASR backbone used in the current experiments is \texttt{openai/whisper-small}. Zero-shot evaluation is performed directly on the target-language test sets. For B2, language-specific LoRA adapters are trained on the corresponding language data. For B4, we apply a lightweight lexicon-constrained reconstruction method that post-processes ASR outputs by replacing out-of-vocabulary words with the closest in-vocabulary candidates under edit distance constraints.
 
-At the present stage, the central experimental bottleneck is not training itself, but the final validation of deployment-grade binary artifacts and their correct loading in the web application. This step is required to ensure that the adapted models can be exercised end-to-end in the live browser environment.
+Morphology-oriented evaluation is performed offline using the saved reconstruction outputs. Because no external morphological parser is currently available for \texttt{sei} or \texttt{ncx}, we use token-level F1 and boundary-position F1 as practical proxy measures of structural recovery.
+
 
 \subsection{Results}
 Table~\ref{tab:midway-results} presents a preliminary quantitative summary based on the current repository artifacts.
@@ -185,9 +190,9 @@ ncx & 1.7771 & 1.6780 & -0.0991 & +0.0906 \\
 \end{tabular}
 \end{table*}
 
-These results suggest that reconstruction is beneficial for both target languages, with substantially larger gains for \texttt{ncx} than for \texttt{sei}. The improvements in token-level F1 indicate that the post-processing stage helps not only raw error counts, but also the structural quality of the predicted output. At the same time, the absolute WER values remain high, which is expected in difficult low-resource settings and further motivates continued adaptation and deployment work.
+The results indicate that lexical reconstruction improves performance for both languages, with substantially larger gains for \texttt{ncx} than for \texttt{sei}. In terms of WER, reconstruction reduces error for both languages, and the morphology-oriented proxy metrics show consistent improvement as well. For \texttt{sei}, the gains are modest but stable, with no observed regressions in the current evaluation. For \texttt{ncx}, the gains are stronger, although a small number of regressions indicate that the reconstructor can occasionally over-correct already valid outputs.
 
-Overall, the current results support the central hypothesis of the project: combining a base ASR channel with morphology-aware reconstruction can improve transcription quality for under-supported, morphologically complex languages.
+Overall, these findings support the main midway conclusion of the project: a lightweight post-ASR reconstruction stage can improve both transcription quality and structural plausibility in low-resource settings, even before full browser-side validation of all adapted models is complete.
 
 \section{Future Work (Next 4 Weeks)}
 Our remaining work is organized into four short-term milestones.
