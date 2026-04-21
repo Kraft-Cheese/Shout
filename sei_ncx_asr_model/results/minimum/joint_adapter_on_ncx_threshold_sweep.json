@@ -1,0 +1,70 @@
+{
+  "language": "ncx",
+  "tokens_file": "/part/01/Tmp/soobenve/min_experiments/evals/joint_adapter_on_ncx/test_tokens.jsonl",
+  "vocab_size": 772,
+  "baseline_wer": 0.6685962373371924,
+  "baseline_cer": 0.1569989929506546,
+  "max_edit_dist": 2,
+  "sweep": [
+    {
+      "threshold": 0.0,
+      "wer_before": 0.6685962373371924,
+      "wer_after": 0.6685962373371924,
+      "wer_delta": 0.0,
+      "cer_before": 0.1569989929506546,
+      "cer_after": 0.1569989929506546,
+      "cer_delta": 0.0,
+      "n_candidates": 0,
+      "n_words": 1382,
+      "n_rewritten": 0
+    },
+    {
+      "threshold": 0.3,
+      "wer_before": 0.6685962373371924,
+      "wer_after": 0.6635311143270622,
+      "wer_delta": -0.005065123010130179,
+      "cer_before": 0.1569989929506546,
+      "cer_after": 0.15709969788519637,
+      "cer_delta": 0.00010070493454178431,
+      "n_candidates": 138,
+      "n_words": 1382,
+      "n_rewritten": 35
+    },
+    {
+      "threshold": 0.5,
+      "wer_before": 0.6685962373371924,
+      "wer_after": 0.6555716353111433,
+      "wer_delta": -0.013024602026049159,
+      "cer_before": 0.1569989929506546,
+      "cer_after": 0.16173212487411884,
+      "cer_delta": 0.004733131923464251,
+      "n_candidates": 413,
+      "n_words": 1382,
+      "n_rewritten": 133
+    },
+    {
+      "threshold": 0.7,
+      "wer_before": 0.6685962373371924,
+      "wer_after": 0.6476121562952243,
+      "wer_delta": -0.02098408104196814,
+      "cer_before": 0.1569989929506546,
+      "cer_after": 0.16787512588116818,
+      "cer_delta": 0.010876132930513593,
+      "n_candidates": 763,
+      "n_words": 1382,
+      "n_rewritten": 274
+    },
+    {
+      "threshold": 1.0,
+      "wer_before": 0.6685962373371924,
+      "wer_after": 0.6526772793053546,
+      "wer_delta": -0.01591895803183785,
+      "cer_before": 0.1569989929506546,
+      "cer_after": 0.17502517623363545,
+      "cer_delta": 0.018026183282980862,
+      "n_candidates": 1382,
+      "n_words": 1382,
+      "n_rewritten": 414
+    }
+  ]
+}
