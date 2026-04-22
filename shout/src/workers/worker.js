@@ -141,6 +141,7 @@ export async function loadModel(language) {
       : Promise.resolve(null);
 
     const onProgress = Comlink.proxy(({ ratio, cached }) => {
+      // console.log('[worker] load progress:', ratio, 'cached:', cached);
       if (cached) {
         // Model is being read from local cache, no download progress needed
         State.loadPhase.value = ratio >= 1.0 ? 'initializing' : 'cached';
@@ -150,16 +151,21 @@ export async function loadModel(language) {
         State.loadPhase.value = 'initializing';
       } else {
         State.downloadProgress.value = ratio;
+        State.loadPhase.value = 'downloading';
       }
     });
 
+    console.log('[worker] calling whisper.load for', language);
     await whisper.load(language, State.useQuantized.value, onProgress);
+    console.log('[worker] whisper.load finished, waiting for vocab');
     await vocabPromise;
 
+    console.log('[worker] load complete, updating state');
     State.loadPhase.value = null;
     State.downloadProgress.value = null;
     State.modelStatus.value = 'ready';
   } catch (err) {
+    console.error('[worker] loadModel failed:', err);
     State.loadPhase.value = null;
     State.downloadProgress.value = null;
     State.modelStatus.value = 'error';
@@ -175,6 +181,7 @@ export async function transcribe(audio) {
 
   try {
     const start = performance.now();
+    State.isProcessing.value = true;
     const result = await whisper.transcribe(audio);
     const latency = performance.now() - start;
 
@@ -183,51 +190,103 @@ export async function transcribe(audio) {
 
     const language = State.language.value;
     const vocab = vocabCache[language] ?? null;
-    const cleanTokens = sanitizeTokens(result.tokens ?? []);
-    const tokenText = buildTextFromTokens(cleanTokens);
-    const rawText = sanitizeText(result.text);
-    const baseText =
-      !rawText || (!/\s/.test(rawText) && tokenText)
-        ? tokenText
-        : rawText;
-    const confidenceStats = computeSegmentConfidence(result.confidence, cleanTokens);
 
-    let finalText = baseText;
-    let wasReconstructed = false;
+    const processResult = (res, applyReconstruction) => {
+      const cleanTokens = sanitizeTokens(res.tokens ?? []);
+      const tokenText = buildTextFromTokens(cleanTokens);
+      const rawText = sanitizeText(res.text);
+      const baseText =
+        !rawText || (!/\s/.test(rawText) && tokenText)
+          ? tokenText
+          : rawText;
+      const confidenceStats = computeSegmentConfidence(res.confidence, cleanTokens);
 
-    // Uncertainty-triggered reconstruction:
-    // If segment confidence is below Tau and a vocab exists for this language,
-    // apply token-level correction targeting only the uncertain tokens.
-    // Falls back to whole-text reconstruction if token data is unavailable.
-    if (confidenceStats.min < TAU && vocab) {
-      if (result.tokens && result.tokens.length > 0) {
-        const { text, changed } = reconstructTokens(
-          result.tokens,
-          vocab,
-          language,
-          TAU
-        );
-        if (changed > 0) {
+      let finalText = baseText;
+      let wasReconstructed = false;
+
+      if (applyReconstruction && confidenceStats.min < TAU && vocab) {
+        if (res.tokens && res.tokens.length > 0) {
+          const { text, changed } = reconstructTokens(
+            res.tokens,
+            vocab,
+            language,
+            TAU
+          );
+          if (changed > 0) {
             finalText = sanitizeText(text);
-          wasReconstructed = true;
-        }
-      } else {
-        const { text, changed } = reconstruct(baseText, vocab, language);
-        if (changed > 0) {
+            wasReconstructed = true;
+          }
+        } else {
+          const { text, changed } = reconstruct(baseText, vocab, language);
+          if (changed > 0) {
             finalText = sanitizeText(text);
-          wasReconstructed = true;
+            wasReconstructed = true;
+          }
         }
       }
+
+      return {
+        transcript: finalText,
+        confidence: confidenceStats.min,
+        confidenceAvg: confidenceStats.avg,
+        tokens: cleanTokens,
+        reconstructed: wasReconstructed,
+      };
+    };
+
+    const mainResult = processResult(result, true);
+
+    if (State.comparisonMode.value) {
+      const rawResult = processResult(result, false);
+
+      // For "base english", we need to run transcription with the English model.
+      let englishResult = null;
+      if (language === 'en') {
+        englishResult = rawResult;
+      } else {
+        try {
+          console.log('[worker] Comparison mode: loading English model');
+          await whisper.load('en', State.useQuantized.value);
+          console.log('[worker] Comparison mode: transcribing with English model');
+          const resEn = await whisper.transcribe(audio);
+          englishResult = processResult(resEn, false);
+          
+          // Restore original model
+          console.log('[worker] Comparison mode: restoring original model', language);
+          await loadModel(language);
+        } catch (enErr) {
+          console.error('[worker] Comparison mode English transcription failed:', enErr);
+          englishResult = { 
+            transcript: `Error: ${enErr.message}`, 
+            confidence: 0, 
+            confidenceAvg: 0, 
+            tokens: [], 
+            reconstructed: false 
+          };
+          // Try to restore original model even on failure
+          await loadModel(language).catch(console.error);
+        }
+      }
+
+      State.comparisonResults.value = {
+        withReconstruction: mainResult,
+        withoutReconstruction: rawResult,
+        baseEnglish: englishResult,
+      };
+    } else {
+      State.comparisonResults.value = null;
     }
 
-    State.transcript.value = finalText;
-    State.confidence.value = confidenceStats.min;
-    State.confidenceAvg.value = confidenceStats.avg;
-    State.tokens.value = cleanTokens;
-    State.reconstructed.value = wasReconstructed;
+    State.transcript.value = mainResult.transcript;
+    State.confidence.value = mainResult.confidence;
+    State.confidenceAvg.value = mainResult.confidenceAvg;
+    State.tokens.value = mainResult.tokens;
+    State.reconstructed.value = mainResult.reconstructed;
     State.metrics.value = { latency, rtf, inference: latency };
     State.error.value = null;
   } catch (err) {
     State.error.value = `Transcription failed: ${err.message}`;
+  } finally {
+    State.isProcessing.value = false;
   }
 }

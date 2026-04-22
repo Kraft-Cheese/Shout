@@ -25,6 +25,10 @@ export function LanguageSelect() {
     await loadModel(State.language.value);
   };
 
+  const handleComparisonChange = (e) => {
+    State.comparisonMode.value = e.target.checked;
+  };
+
   return (
     <div class="section language-select">
       <div class="section-label">Language</div>
@@ -39,15 +43,27 @@ export function LanguageSelect() {
           </option>
         ))}
       </select>
-      <label class="quantized-toggle">
-        <input
-          type="checkbox"
-          checked={State.useQuantized.value}
-          onChange={handleQuantizedChange}
-          disabled={isLoading.value}
-        />
-        Quantized (Q5)
-      </label>
+      
+      <div class="controls-row">
+        <label class="checkbox-toggle">
+          <input
+            type="checkbox"
+            checked={State.useQuantized.value}
+            onChange={handleQuantizedChange}
+            disabled={isLoading.value}
+          />
+          Quantized (Q5)
+        </label>
+
+        <label class="checkbox-toggle">
+          <input
+            type="checkbox"
+            checked={State.comparisonMode.value}
+            onChange={handleComparisonChange}
+          />
+          Comparison Mode
+        </label>
+      </div>
     </div>
   );
 }

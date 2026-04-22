@@ -19,6 +19,48 @@ export function Output() {
   const hasTokens = tokens && tokens.length > 0;
   const hasTranscript = State.transcript.value && State.transcript.value.trim();
 
+  const renderTranscriptionBox = (text, resTokens) => {
+    const localHasTokens = resTokens && resTokens.length > 0;
+    const localHasTranscript = text && text.trim();
+
+    return (
+      <div class={`transcription-box ${!localHasTranscript ? 'empty' : ''}`}>
+        {!localHasTranscript
+          ? 'No result available.'
+          : localHasTokens
+          ? resTokens.map((token, i) => {
+              const level =
+                token.p > 0.7 ? 'high' : token.p > 0.4 ? 'medium' : 'low';
+              return (
+                <span
+                  key={i}
+                  class={`token confidence-${level}`}
+                  title={`p=${(token.p * 100).toFixed(1)}%`}
+                >
+                  {token.text}
+                </span>
+              );
+            })
+          : text}
+      </div>
+    );
+  };
+
+  const renderMetaRow = (res) => {
+    const level = res.confidence > 0.7 ? 'high' : res.confidence > 0.4 ? 'medium' : 'low';
+    return (
+      <div class="meta-row">
+        <span class={`confidence-badge ${level}`}>
+          Min {(res.confidence * 100).toFixed(0)}%
+        </span>
+        <span class="metric">Avg {(res.confidenceAvg * 100).toFixed(0)}%</span>
+        {res.reconstructed && (
+          <span class="badge">Reconstructed</span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div class="section output-section">
       <h2>Transcription</h2>
@@ -54,27 +96,47 @@ export function Output() {
           <span class="spinner" />
           <span>Transcribing...</span>
         </div>
+      ) : State.comparisonMode.value && State.comparisonResults.value ? (
+        <div class="comparison-container">
+          <div class="comparison-item">
+            <div class="comparison-label">Selected Language (Reconstructed)</div>
+            {renderTranscriptionBox(
+              State.comparisonResults.value.withReconstruction.transcript,
+              State.comparisonResults.value.withReconstruction.tokens
+            )}
+            {renderMetaRow(State.comparisonResults.value.withReconstruction)}
+          </div>
+
+          <div class="comparison-item">
+            <div class="comparison-label">Selected Language (Raw)</div>
+            {renderTranscriptionBox(
+              State.comparisonResults.value.withoutReconstruction.transcript,
+              State.comparisonResults.value.withoutReconstruction.tokens
+            )}
+            {renderMetaRow(State.comparisonResults.value.withoutReconstruction)}
+          </div>
+
+          <div class="comparison-item">
+            <div class="comparison-label">Base English</div>
+            {renderTranscriptionBox(
+              State.comparisonResults.value.baseEnglish.transcript,
+              State.comparisonResults.value.baseEnglish.tokens
+            )}
+            {renderMetaRow(State.comparisonResults.value.baseEnglish)}
+          </div>
+          
+          <div class="meta-row" style={{ marginTop: '0.5rem', borderTop: '1px solid var(--her-sand)', paddingTop: '0.75rem' }}>
+             <span class="metric">
+                {State.metrics.value.latency.toFixed(0)} ms
+              </span>
+              <span class="metric">
+                RTF {State.metrics.value.rtf.toFixed(2)}
+              </span>
+          </div>
+        </div>
       ) : (
         <>
-          <div class={`transcription-box ${!hasTranscript ? 'empty' : ''}`}>
-            {!hasTranscript
-              ? 'Record or upload audio to begin.'
-              : hasTokens
-              ? tokens.map((token, i) => {
-                  const level =
-                    token.p > 0.7 ? 'high' : token.p > 0.4 ? 'medium' : 'low';
-                  return (
-                    <span
-                      key={i}
-                      class={`token confidence-${level}`}
-                      title={`p=${(token.p * 100).toFixed(1)}%  t0=${token.t0 * 10}ms`}
-                    >
-                      {token.text}
-                    </span>
-                  );
-                })
-              : State.transcript.value}
-          </div>
+          {renderTranscriptionBox(State.transcript.value, tokens)}
 
           {hasTranscript && (
             <div class="meta-row">

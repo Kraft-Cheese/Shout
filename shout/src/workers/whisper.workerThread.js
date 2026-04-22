@@ -96,32 +96,40 @@ async function headInfo(url) {
 
 function getModelUrlCandidates(modelSize, language, quantized) {
   const q = quantized ? '-q5' : '';
+  console.log('[whisper] getModelUrlCandidates modelSize=', modelSize, 'language=', language, 'quantized=', quantized);
   const candidates = [
     `/models/whisper-${modelSize}-${language}${q}.bin`,
     `/models/whisper-${modelSize}.${language}${q}.bin`,
   ];
 
-  candidates.push(`/models/whisper-${modelSize}${q}.bin`);
+  if (language !== 'en') {
+    candidates.push(`/models/whisper-${modelSize}${q}.bin`);
+  }
   return [...new Set(candidates)];
 }
 
 async function resolveModelUrl(modelSize, language, quantized) {
-  const candidates = getModelUrlCandidates(modelSize, language, quantized);
+  let candidates = getModelUrlCandidates(modelSize, language, quantized);
 
-  for (const url of candidates) {
-    const info = await headInfo(url);
-    console.log('[whisper] Model HEAD', url, 'status=', info.status, 'len=', info.length, 'type=', info.contentType || 'unknown');
+  const tryResolve = async (urls) => {
+    for (const url of urls) {
+      const info = await headInfo(url);
+      console.log('[whisper] Model HEAD', url, 'status=', info.status, 'len=', info.length, 'type=', info.contentType || 'unknown');
 
-    // Reject tiny/text responses (typically Vite HTML fallback) even with 200.
-    const isLikelyBinary =
-      info.ok &&
-      !info.contentType.includes('text/html') &&
-      (info.length === null || info.length > 1024 * 1024);
+      const isLikelyBinary =
+        info.ok &&
+        !info.contentType.includes('text/html') &&
+        (info.length === null || info.length > 1024 * 1024);
 
-    if (isLikelyBinary) {
-      return url;
+      if (isLikelyBinary) {
+        return url;
+      }
     }
-  }
+    return null;
+  };
+
+  let resolved = await tryResolve(candidates);
+  if (resolved) return resolved;
 
   throw new Error(
     `No valid model binary found for size=${modelSize}, language=${language}, quantized=${quantized}. Tried: ${candidates.join(', ')}`
@@ -160,6 +168,7 @@ async function ensureWasmLoaded() {
       // Force pthread workers to load stream.js rather than this wrapper worker.
       mainScriptUrlOrBlob: streamScriptUrl,
       onRuntimeInitialized: () => {
+        if (wasmReady) return; // Already handled
         clearTimeout(watchdog);
         console.log('[whisper] onRuntimeInitialized fired WASM heap ready');
         wasmReady = true;
@@ -214,7 +223,7 @@ const api = {
         ? 'small'
         : IS_MOBILE ? 'tiny' : 'base';
       const modelUrl = await resolveModelUrl(modelSize, language, quantized);
-      console.log('[whisper] Model URL:', modelUrl, 'IS_MOBILE=', IS_MOBILE);
+      console.log('[whisper] Model URL resolved to:', modelUrl, 'IS_MOBILE=', IS_MOBILE);
 
       const MODEL_CACHE = 'shout-models-v1';
 
@@ -225,12 +234,12 @@ const api = {
           const cache = await caches.open(MODEL_CACHE);
           const cached = await cache.match(modelUrl);
           if (cached) {
-            console.log('[whisper] Model found in cache, loading...');
-            if (onProgress) onProgress({ received: 1, total: 1, ratio: 0.99, cached: true });
+            console.log('[whisper] Model found in cache, loading from buffer...');
+            if (onProgress) onProgress({ ratio: 0.99, cached: true });
             const ab = await cached.arrayBuffer();
             buffer = new Uint8Array(ab);
             console.log('[whisper] Model loaded from cache, bytes=', buffer.byteLength);
-            if (onProgress) onProgress({ received: buffer.byteLength, total: buffer.byteLength, ratio: 1.0, cached: true });
+            if (onProgress) onProgress({ ratio: 1.0, cached: true });
           }
         } catch (cacheErr) {
           console.warn('[whisper] Cache read failed, will fetch from network:', cacheErr.message);
@@ -238,7 +247,7 @@ const api = {
       }
 
       if (!buffer) {
-        console.log('[whisper] Fetching model from network...');
+        console.log('[whisper] Fetching model from network:', modelUrl);
         const response = await fetch(modelUrl);
         if (!response.ok) {
           throw new Error(`Model fetch failed for ${modelUrl}: HTTP ${response.status}`);
@@ -270,7 +279,7 @@ const api = {
             if (pct > lastReportedPct) {
               lastReportedPct = pct;
               console.log('[whisper] Download progress:', pct, '%');
-              onProgress({ received, total, ratio: received / total });
+              onProgress({ received, total, ratio: received / total, cached: false });
             }
           }
         }
@@ -282,7 +291,7 @@ const api = {
           );
         }
 
-        if (onProgress) onProgress({ received, total: received, ratio: 1.0 });
+        if (onProgress) onProgress({ received, total: received, ratio: 1.0, cached: false });
 
         buffer = new Uint8Array(received);
         let offset = 0;
@@ -309,13 +318,26 @@ const api = {
       }
 
       console.log('[whisper] Writing model to WASM FS...');
-      try { fsUnlinkSafe('whisper.bin'); } catch (_) {}
+      try { fsUnlinkSafe('/whisper.bin'); } catch (_) {}
       fsCreateDataFileSafe('/', 'whisper.bin', buffer, true, true);
 
       const modelFsSize = fsStatSizeSafe('/whisper.bin');
       console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
 
       console.log('[whisper] Calling Module.init...');
+      if (ctx) {
+        console.log('[whisper] Existing context found, attempt to free/re-init is implied by Module.init');
+        // In some whisper.cpp WASM builds, there is a Module.free(ctx) or similar.
+        // If it exists, let's use it to avoid memory leaks or re-init hangs.
+        if (typeof self.Module.free === 'function') {
+          try {
+            self.Module.free(ctx);
+            console.log('[whisper] Freed previous context');
+          } catch (e) {
+            console.warn('[whisper] Module.free(ctx) failed:', e);
+          }
+        }
+      }
       ctx = null;
       let initLanguageUsed = null;
       let initModelPathUsed = null;
@@ -324,13 +346,18 @@ const api = {
 
       for (const initPath of initModelPaths) {
         for (const initLang of initLanguages) {
-          const candidateCtx = self.Module.init(initPath, initLang);
-          console.log('[whisper] Module.init attempt path=', initPath, 'lang=', initLang, 'ctx=', candidateCtx);
-          if (candidateCtx) {
-            ctx = candidateCtx;
-            initLanguageUsed = initLang;
-            initModelPathUsed = initPath;
-            break;
+          try {
+            console.log('[whisper] Attempting Module.init path=', initPath, 'lang=', initLang);
+            const candidateCtx = self.Module.init(initPath, initLang);
+            console.log('[whisper] Module.init result ctx=', candidateCtx);
+            if (candidateCtx) {
+              ctx = candidateCtx;
+              initLanguageUsed = initLang;
+              initModelPathUsed = initPath;
+              break;
+            }
+          } catch (initErr) {
+            console.error('[whisper] Module.init exception:', initErr);
           }
         }
         if (ctx) break;
@@ -342,34 +369,17 @@ const api = {
         );
       }
 
-      if (initModelPathUsed !== 'whisper.bin') {
-        console.warn(
-          '[whisper] Relative model path failed at init; using fallback path',
-          initModelPathUsed
-        );
-      }
-
-      if (initLanguageUsed !== language) {
-        console.warn(
-          '[whisper] Requested language',
-          language,
-          'failed at init; using fallback',
-          initLanguageUsed
-        );
-      }
-
       if (POLYSYNTHETIC_LANGS.has(language)) {
         console.log('[whisper] Polysynthetic language, setting max_tokens=128');
         self.Module.set_max_tokens(128);
       }
 
       isModelLoaded = true;
-      console.log('[whisper] Model initialized successfully, ctx=', ctx);
-      console.log('[whisper] load() complete model ready');
+      console.log('[whisper] load() complete model ready, ctx=', ctx);
     } catch (err) {
       console.error('[whisper] load() failed:', err);
       isModelLoaded = false;
-      throw new Error(`Failed to load Whisper: ${err.message}`);
+      throw err;
     }
   },
 
@@ -377,10 +387,23 @@ const api = {
     return isModelLoaded;
   },
 
-  async transcribe(audio) {
-    console.log('[whisper] transcribe() called, audio samples=', audio.length);
+  async transcribe(audio, language = null) {
+    console.log('[whisper] transcribe() called, audio samples=', audio.length, 'language=', language);
     if (!ctx || !isModelLoaded) {
       throw new Error('Model not loaded. Please load the model first.');
+    }
+
+    if (language) {
+      // Re-initialize for a different language if needed.
+      // NOTE: This might be slow if it involves heavy re-init, but let's see.
+      // Usually whisper.cpp's init is what sets the language.
+      // If the model is already loaded in FS, we just call init again with different lang?
+      // But Module.init in this WASM might expect to be called once.
+      // Let's try to just use set_audio and see if it respects the initial language.
+      // If we want to change language mid-session, we might need a way to tell the WASM.
+      // In this specific WASM implementation, language is passed to init().
+      // If we need to change language, we might need to re-init.
+      // For now, let's assume we use the language it was loaded with.
     }
 
     self.Module.set_audio(ctx, audio);

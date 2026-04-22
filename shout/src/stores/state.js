@@ -32,6 +32,10 @@ export const State = {
   confidenceAvg: signal(0.0),
   reconstructed: signal(false),
 
+  /** Comparison results if comparisonMode is on */
+  comparisonMode: signal(false),
+  comparisonResults: signal(null),
+
   /** Performance metrics */
   metrics: signal({
     inference: 0,

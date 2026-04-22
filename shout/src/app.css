@@ -328,19 +328,46 @@
 .token.confidence-medium { background: rgba(255, 152, 0, 0.15); border-radius: 2px; }
 .token.confidence-low    { background: rgba(244, 67, 54, 0.15); border-radius: 2px; }
 
-/* Quantized toggle */
-.quantized-toggle {
+/* Controls row for checkboxes */
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.checkbox-toggle {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.5rem;
   font-size: 0.875rem;
   color: var(--her-text-muted);
   cursor: pointer;
 }
 
-.quantized-toggle input {
+.checkbox-toggle input {
   cursor: pointer;
+}
+
+/* Comparison results */
+.comparison-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.comparison-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comparison-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--her-slate);
+  text-transform: uppercase;
 }
 
 /* Metric badges */
