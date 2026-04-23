@@ -1,11 +1,13 @@
-import { State, isReady, isLoading } from '../stores/state.js';
+import { State, isLoading } from '../stores/state.js';
 import { loadModel } from '../workers/worker.js';
+
 
 /** Supported languages for transcription */
 const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'fr', name: 'French' },
-  { code: 'nahuatl', name: 'Nahuatl' },
+  { code: 'en',  name: 'English' },
+  { code: 'fr',  name: 'French' },
+  { code: 'sei', name: 'Seri' },
+  { code: 'ncx', name: "Nxa'amxcín" },
 ];
 
 /**
@@ -13,17 +15,21 @@ const LANGUAGES = [
  * Updates global state and reloads model when changed.
  */
 export function LanguageSelect() {
-  const handleChange = async (e) => {
-    const newLang = e.target.value;
-    State.language.value = newLang;
-    await loadModel(newLang);
+  const handleLangChange = async (e) => {
+    State.language.value = e.target.value;
+    await loadModel(State.language.value);
+  };
+
+  const handleQuantizedChange = async (e) => {
+    State.useQuantized.value = e.target.checked;
+    await loadModel(State.language.value);
   };
 
   return (
-    <div class="section language-select">
+    <div class="language-select language-select-nav">
       <div class="section-label">Language</div>
       <select
-        onChange={handleChange}
+        onChange={handleLangChange}
         disabled={isLoading.value}
         value={State.language.value}
       >
@@ -33,6 +39,15 @@ export function LanguageSelect() {
           </option>
         ))}
       </select>
+      <label class="quantized-toggle">
+        <input
+          type="checkbox"
+          checked={State.useQuantized.value}
+          onChange={handleQuantizedChange}
+          disabled={isLoading.value}
+        />
+        Quantized (Q5)
+      </label>
     </div>
   );
 }
