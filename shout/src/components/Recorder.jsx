@@ -1,16 +1,13 @@
-import { useRef } from 'preact/hooks';
-import { State, isReady, isBusy, isLoading } from '../stores/state.js';
+import { State, isReady, isLoading } from '../stores/state.js';
 import { useAudioCapture } from '../hooks/useAudio.js';
 import { transcribe } from '../workers/worker.js';
-
-const SAMPLE_RATE = 16000;
+import { Microphone } from '@phosphor-icons/react';
 
 /**
  * Audio recorder component.
- * Supports microphone recording and file upload.
+ * Supports microphone recording.
  */
 export function Recorder() {
-  const fileInputRef = useRef(null);
   const { startRecording, stopRecording } = useAudioCapture();
 
   const isDisabled = !isReady.value || isLoading.value;
@@ -38,64 +35,18 @@ export function Recorder() {
     }
   };
 
-  /** Handle uploaded audio file */
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      State.isProcessing.value = true;
-
-      const arrayBuffer = await file.arrayBuffer();
-      const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      const audio = audioBuffer.getChannelData(0);
-      await audioCtx.close();
-
-      await transcribe(audio);
-    } catch (err) {
-      State.error.value = `Failed to process file: ${err.message}`;
-    } finally {
-      State.isProcessing.value = false;
-      e.target.value = '';
-    }
-  };
-
   return (
     <div class="section recorder">
-      <div class="section-label">Record</div>
-      <div class="button-row">
-        <button
-          class={`btn-record ${State.isRecording.value ? 'recording' : ''}`}
-          onClick={handleRecord}
-          disabled={isDisabled || State.isProcessing.value}
-        >
-          {State.isRecording.value ? 'Stop' : 'Record'}
-        </button>
-
-        <button
-          class="btn-upload"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isDisabled || isBusy.value}
-        >
-          Upload
-        </button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="audio/*"
-          onChange={handleFile}
-          hidden
-        />
-      </div>
-
-      {State.isRecording.value && (
-        <div class="recording-indicator">
-          <span class="pulse" />
-          Recording...
-        </div>
-      )}
+      <button
+        type="button"
+        class={`record-fab ${State.isRecording.value ? 'recording' : ''}`}
+        onClick={handleRecord}
+        disabled={isDisabled || State.isProcessing.value}
+        aria-label={State.isRecording.value ? 'Stop recording' : 'Start recording'}
+        title={State.isRecording.value ? 'Stop recording' : 'Start recording'}
+      >
+        <Microphone size={24} weight="fill" class="record-fab-icon" aria-hidden="true" />
+      </button>
     </div>
   );
 }

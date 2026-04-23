@@ -29,6 +29,63 @@ let ctx = null;
 let isModelLoaded = false;
 let wasmReady = false;
 
+function initFromBuffer(language, buffer) {
+  console.log('[whisper] Writing model to WASM FS...');
+  try { fsUnlinkSafe('whisper.bin'); } catch (_) {}
+  fsCreateDataFileSafe('/', 'whisper.bin', buffer, true, true);
+
+  const modelFsSize = fsStatSizeSafe('/whisper.bin');
+  console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
+
+  console.log('[whisper] Calling Module.init...');
+  ctx = null;
+  let initLanguageUsed = null;
+  let initModelPathUsed = null;
+  const initLanguages = getInitLanguageFallbacks(language);
+  const initModelPaths = ['whisper.bin', '/whisper.bin'];
+
+  for (const initPath of initModelPaths) {
+    for (const initLang of initLanguages) {
+      const candidateCtx = self.Module.init(initPath, initLang);
+      console.log('[whisper] Module.init attempt path=', initPath, 'lang=', initLang, 'ctx=', candidateCtx);
+      if (candidateCtx) {
+        ctx = candidateCtx;
+        initLanguageUsed = initLang;
+        initModelPathUsed = initPath;
+        break;
+      }
+    }
+    if (ctx) break;
+  }
+
+  if (!ctx) {
+    throw new Error(
+      `Module.init returned null for all attempts: paths=[${initModelPaths.join(', ')}], languages=[${initLanguages.join(', ')}]`
+    );
+  }
+
+  if (initModelPathUsed !== 'whisper.bin') {
+    console.warn(
+      '[whisper] Relative model path failed at init; using fallback path',
+      initModelPathUsed
+    );
+  }
+
+  if (initLanguageUsed !== language) {
+    console.warn(
+      '[whisper] Requested language',
+      language,
+      'failed at init; using fallback',
+      initLanguageUsed
+    );
+  }
+
+  if (POLYSYNTHETIC_LANGS.has(language)) {
+    console.log('[whisper] Polysynthetic language, setting max_tokens=128');
+    self.Module.set_max_tokens(128);
+  }
+}
+
 function getInitLanguageFallbacks(language) {
   const queue = [language];
   if (language !== 'auto') queue.push('auto');
@@ -36,9 +93,6 @@ function getInitLanguageFallbacks(language) {
   return [...new Set(queue)];
 }
 
-function getInitModelPathFallbacks() {
-  return ['whisper.bin', '/whisper.bin'];
-}
 
 function fsUnlinkSafe(path) {
   if (typeof self.Module?.FS_unlink === 'function') {
@@ -99,9 +153,12 @@ function getModelUrlCandidates(modelSize, language, quantized) {
   const candidates = [
     `/models/whisper-${modelSize}-${language}${q}.bin`,
     `/models/whisper-${modelSize}.${language}${q}.bin`,
+    `/models/whisper-${modelSize}${q}.bin`,
+    // English base fallback — used when language-specific LoRA models haven't been built yet
+    `/models/whisper-base.en${q}.bin`,
+    `/models/whisper-base${q}.bin`,
   ];
 
-  candidates.push(`/models/whisper-${modelSize}${q}.bin`);
   return [...new Set(candidates)];
 }
 
@@ -124,7 +181,7 @@ async function resolveModelUrl(modelSize, language, quantized) {
   }
 
   throw new Error(
-    `No valid model binary found for size=${modelSize}, language=${language}, quantized=${quantized}. Tried: ${candidates.join(', ')}`
+    `No model binary found. Tried: ${candidates.join(', ')}`
   );
 }
 
@@ -308,60 +365,7 @@ const api = {
         }
       }
 
-      console.log('[whisper] Writing model to WASM FS...');
-      try { fsUnlinkSafe('whisper.bin'); } catch (_) {}
-      fsCreateDataFileSafe('/', 'whisper.bin', buffer, true, true);
-
-      const modelFsSize = fsStatSizeSafe('/whisper.bin');
-      console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
-
-      console.log('[whisper] Calling Module.init...');
-      ctx = null;
-      let initLanguageUsed = null;
-      let initModelPathUsed = null;
-      const initLanguages = getInitLanguageFallbacks(language);
-      const initModelPaths = getInitModelPathFallbacks();
-
-      for (const initPath of initModelPaths) {
-        for (const initLang of initLanguages) {
-          const candidateCtx = self.Module.init(initPath, initLang);
-          console.log('[whisper] Module.init attempt path=', initPath, 'lang=', initLang, 'ctx=', candidateCtx);
-          if (candidateCtx) {
-            ctx = candidateCtx;
-            initLanguageUsed = initLang;
-            initModelPathUsed = initPath;
-            break;
-          }
-        }
-        if (ctx) break;
-      }
-
-      if (!ctx) {
-        throw new Error(
-          `Module.init returned null for all attempts: paths=[${initModelPaths.join(', ')}], languages=[${initLanguages.join(', ')}]`
-        );
-      }
-
-      if (initModelPathUsed !== 'whisper.bin') {
-        console.warn(
-          '[whisper] Relative model path failed at init; using fallback path',
-          initModelPathUsed
-        );
-      }
-
-      if (initLanguageUsed !== language) {
-        console.warn(
-          '[whisper] Requested language',
-          language,
-          'failed at init; using fallback',
-          initLanguageUsed
-        );
-      }
-
-      if (POLYSYNTHETIC_LANGS.has(language)) {
-        console.log('[whisper] Polysynthetic language, setting max_tokens=128');
-        self.Module.set_max_tokens(128);
-      }
+      initFromBuffer(language, buffer);
 
       isModelLoaded = true;
       console.log('[whisper] Model initialized successfully, ctx=', ctx);
@@ -370,6 +374,25 @@ const api = {
       console.error('[whisper] load() failed:', err);
       isModelLoaded = false;
       throw new Error(`Failed to load Whisper: ${err.message}`);
+    }
+  },
+
+  async loadFromBytes(language, _quantized = false, bytes) {
+    console.log('[whisper] loadFromBytes() called, language=', language, 'bytes=', bytes?.byteLength ?? 0);
+    try {
+      await ensureWasmLoaded();
+      const buffer = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      if (buffer.byteLength < 1024 * 1024) {
+        throw new Error(`Uploaded model is too small (${buffer.byteLength} bytes).`);
+      }
+
+      initFromBuffer(language, buffer);
+      isModelLoaded = true;
+      console.log('[whisper] loadFromBytes() complete model ready');
+    } catch (err) {
+      console.error('[whisper] loadFromBytes() failed:', err);
+      isModelLoaded = false;
+      throw new Error(`Failed to load uploaded model: ${err.message}`);
     }
   },
 

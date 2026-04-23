@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "@preact/signals": "^2.8.1",
     "comlink": "^4.4.2",
     "preact": "^10.27.2"

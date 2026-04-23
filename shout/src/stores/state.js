@@ -31,6 +31,7 @@ export const State = {
   confidence: signal(0.0),
   confidenceAvg: signal(0.0),
   reconstructed: signal(false),
+  showInterpunct: signal(false),
 
   /** Performance metrics */
   metrics: signal({

@@ -167,6 +167,35 @@ export async function loadModel(language) {
   }
 }
 
+export async function loadModelFromFile(file) {
+  if (!workerInitialized || !whisper) {
+    State.error.value = 'Worker not initialized. Please refresh the page.';
+    return;
+  }
+
+  State.modelStatus.value = 'loading';
+  State.loadPhase.value = 'initializing';
+  State.downloadProgress.value = null;
+  State.error.value = null;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    await whisper.loadFromBytes(
+      State.language.value,
+      State.useQuantized.value,
+      Comlink.transfer(bytes, [bytes.buffer])
+    );
+
+    State.loadPhase.value = null;
+    State.modelStatus.value = 'ready';
+  } catch (err) {
+    State.loadPhase.value = null;
+    State.modelStatus.value = 'error';
+    State.error.value = err.message;
+  }
+}
+
 export async function transcribe(audio) {
   if (!workerInitialized || !whisper) {
     State.error.value = 'Worker not initialized.';
@@ -200,7 +229,7 @@ export async function transcribe(audio) {
     // apply token-level correction targeting only the uncertain tokens.
     // Falls back to whole-text reconstruction if token data is unavailable.
     if (confidenceStats.min < TAU && vocab) {
-      if (result.tokens && result.tokens.length > 0) {
+      if (cleanTokens.length > 0) {
         const { text, changed } = reconstructTokens(
           result.tokens,
           vocab,
@@ -208,13 +237,13 @@ export async function transcribe(audio) {
           TAU
         );
         if (changed > 0) {
-            finalText = sanitizeText(text);
+          finalText = sanitizeText(text);
           wasReconstructed = true;
         }
       } else {
         const { text, changed } = reconstruct(baseText, vocab, language);
         if (changed > 0) {
-            finalText = sanitizeText(text);
+          finalText = sanitizeText(text);
           wasReconstructed = true;
         }
       }
@@ -225,7 +254,7 @@ export async function transcribe(audio) {
     State.confidenceAvg.value = confidenceStats.avg;
     State.tokens.value = cleanTokens;
     State.reconstructed.value = wasReconstructed;
-    State.metrics.value = { latency, rtf, inference: latency };
+    State.metrics.value = { latency, rtf };
     State.error.value = null;
   } catch (err) {
     State.error.value = `Transcription failed: ${err.message}`;

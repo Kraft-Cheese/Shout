@@ -1,4 +1,4 @@
-import { State, isReady, isLoading } from '../stores/state.js';
+import { State, isLoading } from '../stores/state.js';
 import { loadModel } from '../workers/worker.js';
 
 
@@ -26,7 +26,7 @@ export function LanguageSelect() {
   };
 
   return (
-    <div class="section language-select">
+    <div class="language-select language-select-nav">
       <div class="section-label">Language</div>
       <select
         onChange={handleLangChange}
