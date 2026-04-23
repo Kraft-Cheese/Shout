@@ -14,7 +14,7 @@ const SAMPLE_RATE = 16000;
 const TAU = 0.5;
 
 // Languages that have a vocab file in public/vocab/ for reconstruction
-const RECONSTRUCTABLE = new Set(['sei', 'ncx']);
+const RECONSTRUCTABLE = new Set(['sei', 'ncx', 'sei-joint', 'ncx-joint']);
 
 const CONTROL_TAG_RE = /\[_[A-Za-z]+(?:_[0-9]+)?_?\]/g;
 const WHISPER_SPECIAL_RE = /<\|[^|]+\|>/g;
@@ -26,12 +26,13 @@ let workerInitialized = false;
 const vocabCache = {};
 
 async function fetchVocab(language) {
-  if (vocabCache[language]) return vocabCache[language];
+  const targetLang = (language === 'sei-joint' || language === 'ncx-joint') ? language.split('-')[0] : language;
+  if (vocabCache[targetLang]) return vocabCache[targetLang];
   try {
-    const res = await fetch(`/vocab/${language}.json`);
+    const res = await fetch(`/vocab/${targetLang}.json`);
     if (!res.ok) return null;
-    vocabCache[language] = await res.json();
-    return vocabCache[language];
+    vocabCache[targetLang] = await res.json();
+    return vocabCache[targetLang];
   } catch {
     return null;
   }
@@ -188,8 +189,9 @@ export async function transcribe(audio) {
     const audioDurationMs = (audio.length / SAMPLE_RATE) * 1000;
     const rtf = latency / audioDurationMs;
 
-    const language = State.language.value;
-    const vocab = vocabCache[language] ?? null;
+    const currentLanguage = State.language.value;
+    const vocabLang = (currentLanguage === 'sei-joint' || currentLanguage === 'ncx-joint') ? currentLanguage.split('-')[0] : currentLanguage;
+    const vocab = vocabCache[vocabLang] ?? null;
 
     const processResult = (res, applyReconstruction) => {
       const cleanTokens = sanitizeTokens(res.tokens ?? []);
@@ -209,7 +211,7 @@ export async function transcribe(audio) {
           const { text, changed } = reconstructTokens(
             res.tokens,
             vocab,
-            language,
+            vocabLang,
             TAU
           );
           if (changed > 0) {
@@ -217,7 +219,7 @@ export async function transcribe(audio) {
             wasReconstructed = true;
           }
         } else {
-          const { text, changed } = reconstruct(baseText, vocab, language);
+          const { text, changed } = reconstruct(baseText, vocab, vocabLang);
           if (changed > 0) {
             finalText = sanitizeText(text);
             wasReconstructed = true;
@@ -241,7 +243,7 @@ export async function transcribe(audio) {
 
       // For "base english", we need to run transcription with the English model.
       let englishResult = null;
-      if (language === 'en') {
+      if (vocabLang === 'en') {
         englishResult = rawResult;
       } else {
         try {
@@ -252,8 +254,8 @@ export async function transcribe(audio) {
           englishResult = processResult(resEn, false);
           
           // Restore original model
-          console.log('[worker] Comparison mode: restoring original model', language);
-          await loadModel(language);
+          console.log('[worker] Comparison mode: restoring original model', currentLanguage);
+          await loadModel(currentLanguage);
         } catch (enErr) {
           console.error('[worker] Comparison mode English transcription failed:', enErr);
           englishResult = { 
@@ -264,7 +266,7 @@ export async function transcribe(audio) {
             reconstructed: false 
           };
           // Try to restore original model even on failure
-          await loadModel(language).catch(console.error);
+          await loadModel(currentLanguage).catch(console.error);
         }
       }
 
@@ -307,7 +309,8 @@ export async function transcribeBatch(audio, targetLang, referenceText = '') {
   const audioDurationMs = (audio.length / SAMPLE_RATE) * 1000;
   const rtf = latency / audioDurationMs;
 
-  const vocab = vocabCache[targetLang] ?? null;
+  const vocabLang = (targetLang === 'sei-joint' || targetLang === 'ncx-joint') ? targetLang.split('-')[0] : targetLang;
+  const vocab = vocabCache[vocabLang] ?? null;
 
   const processResult = (res, applyReconstruction) => {
     const cleanTokens = sanitizeTokens(res.tokens ?? []);
@@ -321,13 +324,13 @@ export async function transcribeBatch(audio, targetLang, referenceText = '') {
 
     if (applyReconstruction && confidenceStats.min < TAU && vocab) {
       if (res.tokens && res.tokens.length > 0) {
-        const { text, changed } = reconstructTokens(res.tokens, vocab, targetLang, TAU);
+        const { text, changed } = reconstructTokens(res.tokens, vocab, vocabLang, TAU);
         if (changed > 0) {
           finalText = sanitizeText(text);
           wasReconstructed = true;
         }
       } else {
-        const { text, changed } = reconstruct(baseText, vocab, targetLang);
+        const { text, changed } = reconstruct(baseText, vocab, vocabLang);
         if (changed > 0) {
           finalText = sanitizeText(text);
           wasReconstructed = true;

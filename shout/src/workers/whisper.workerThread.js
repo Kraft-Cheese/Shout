@@ -18,7 +18,7 @@ import * as Comlink from 'comlink';
  */
 
 // Languages that benefit from higher max_tokens due to polysynthetic morphology
-const POLYSYNTHETIC_LANGS = new Set(['sei', 'ncx', 'nhn', 'cr', 'iku']);
+const POLYSYNTHETIC_LANGS = new Set(['sei', 'ncx', 'nhn', 'cr', 'iku', 'sei-joint', 'ncx-joint']);
 
 // Mobile detection to pick a smaller model
 const IS_MOBILE = /Mobi|Android/i.test(
@@ -96,10 +96,11 @@ async function headInfo(url) {
 
 function getModelUrlCandidates(modelSize, language, quantized) {
   const q = quantized ? '-q5' : '';
-  console.log('[whisper] getModelUrlCandidates modelSize=', modelSize, 'language=', language, 'quantized=', quantized);
+  const actualLang = (language === 'sei-joint' || language === 'ncx-joint') ? 'joint' : language;
+  console.log('[whisper] getModelUrlCandidates modelSize=', modelSize, 'language=', language, 'quantized=', quantized, 'actualLang=', actualLang);
   const candidates = [
-    `/models/whisper-${modelSize}-${language}${q}.bin`,
-    `/models/whisper-${modelSize}.${language}${q}.bin`,
+    `/models/whisper-${modelSize}-${actualLang}${q}.bin`,
+    `/models/whisper-${modelSize}.${actualLang}${q}.bin`,
   ];
 
   if (language !== 'en') {
@@ -212,14 +213,15 @@ const api = {
 
   async load(language, quantized = false, onProgress = null) {
     console.log('[whisper] load() called, language=', language, 'quantized=', quantized);
+    const actualLang = (language === 'sei-joint' || language === 'ncx-joint') ? 'joint' : language;
     try {
       await ensureWasmLoaded();
       console.log('[whisper] WASM ready, proceeding to model fetch');
 
       // Fine-tuned LoRA models are whisper-small; generic languages fall back
       // to whisper-tiny (mobile) or whisper-base (desktop).
-      const FINE_TUNED_LANGS = new Set(['sei', 'ncx']);
-      const modelSize = FINE_TUNED_LANGS.has(language)
+      const FINE_TUNED_LANGS = new Set(['sei', 'ncx', 'sei-joint', 'ncx-joint', 'joint']);
+      const modelSize = FINE_TUNED_LANGS.has(actualLang)
         ? 'small'
         : IS_MOBILE ? 'tiny' : 'base';
       const modelUrl = await resolveModelUrl(modelSize, language, quantized);

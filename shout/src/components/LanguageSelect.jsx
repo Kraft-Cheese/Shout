@@ -8,6 +8,8 @@ const LANGUAGES = [
   { code: 'fr',  name: 'French' },
   { code: 'sei', name: 'Seri' },
   { code: 'ncx', name: "Nxa'amxcín" },
+  { code: 'sei-joint', name: 'Seri (Joint)' },
+  { code: 'ncx-joint', name: "Nxa'amxcín (Joint)" },
 ];
 
 /**
