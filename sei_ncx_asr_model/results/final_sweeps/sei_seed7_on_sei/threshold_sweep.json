@@ -1,0 +1,70 @@
+{
+  "language": "sei",
+  "tokens_file": "/part/01/Tmp/soobenve/nlp-project/Shout/sei_ncx_asr_model/missing_evaluations/evals/sei_seed7_on_sei/test_tokens.jsonl",
+  "vocab_size": 1886,
+  "baseline_wer": 0.5980139757263699,
+  "baseline_cer": 0.15152376216523408,
+  "max_edit_dist": 2,
+  "sweep": [
+    {
+      "threshold": 0.0,
+      "wer_before": 0.5980139757263699,
+      "wer_after": 0.5980139757263699,
+      "wer_delta": 0.0,
+      "cer_before": 0.15152376216523408,
+      "cer_after": 0.15152376216523408,
+      "cer_delta": 0.0,
+      "n_candidates": 0,
+      "n_words": 2739,
+      "n_rewritten": 0
+    },
+    {
+      "threshold": 0.3,
+      "wer_before": 0.5980139757263699,
+      "wer_after": 0.5928650239058477,
+      "wer_delta": -0.0051489518205222184,
+      "cer_before": 0.15152376216523408,
+      "cer_after": 0.15571499609291753,
+      "cer_delta": 0.0041912339276834465,
+      "n_candidates": 205,
+      "n_words": 2739,
+      "n_rewritten": 105
+    },
+    {
+      "threshold": 0.5,
+      "wer_before": 0.5980139757263699,
+      "wer_after": 0.5891872011769033,
+      "wer_delta": -0.008826774549466676,
+      "cer_before": 0.15152376216523408,
+      "cer_after": 0.1694253036868651,
+      "cer_delta": 0.01790154152163101,
+      "n_candidates": 747,
+      "n_words": 2739,
+      "n_rewritten": 379
+    },
+    {
+      "threshold": 0.7,
+      "wer_before": 0.5980139757263699,
+      "wer_after": 0.5855093784479588,
+      "wer_delta": -0.012504597278411134,
+      "cer_before": 0.15152376216523408,
+      "cer_after": 0.18235419478582085,
+      "cer_delta": 0.030830432620586767,
+      "n_candidates": 1343,
+      "n_words": 2739,
+      "n_rewritten": 639
+    },
+    {
+      "threshold": 1.0,
+      "wer_before": 0.5980139757263699,
+      "wer_after": 0.5924972416329533,
+      "wer_delta": -0.005516734093416686,
+      "cer_before": 0.15152376216523408,
+      "cer_after": 0.1978404489592953,
+      "cer_delta": 0.04631668679406123,
+      "n_candidates": 2739,
+      "n_words": 2739,
+      "n_rewritten": 904
+    }
+  ]
+}

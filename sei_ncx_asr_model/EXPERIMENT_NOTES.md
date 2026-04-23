@@ -1,0 +1,5 @@
+- minimum_experiments: had to rerun after patching eval/generate path
+- minimum_experiments: joint adapter + tau sweep completed; monolingual/off-diagonal rows still missing
+- files6: renamed from files(6) to files6 because bash/eval broke on parentheses
+- files6: patched audio loading to avoid torchcodec/FFmpeg issue
+- files6: reduced worker pressure due to memory issues

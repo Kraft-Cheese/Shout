@@ -1,0 +1,70 @@
+{
+  "language": "sei",
+  "tokens_file": "/part/01/Tmp/soobenve/min_experiments/evals/joint_adapter_on_sei/test_tokens.jsonl",
+  "vocab_size": 1886,
+  "baseline_wer": 0.6325855093784479,
+  "baseline_cer": 0.16494991830645733,
+  "max_edit_dist": 2,
+  "sweep": [
+    {
+      "threshold": 0.0,
+      "wer_before": 0.6325855093784479,
+      "wer_after": 0.6325855093784479,
+      "wer_delta": 0.0,
+      "cer_before": 0.16494991830645733,
+      "cer_after": 0.16494991830645733,
+      "cer_delta": 0.0,
+      "n_candidates": 0,
+      "n_words": 2649,
+      "n_rewritten": 0
+    },
+    {
+      "threshold": 0.3,
+      "wer_before": 0.6325855093784479,
+      "wer_after": 0.6289076866495035,
+      "wer_delta": -0.0036778227289444576,
+      "cer_before": 0.16494991830645733,
+      "cer_after": 0.16963841727640833,
+      "cer_delta": 0.004688498969950994,
+      "n_candidates": 212,
+      "n_words": 2649,
+      "n_rewritten": 105
+    },
+    {
+      "threshold": 0.5,
+      "wer_before": 0.6325855093784479,
+      "wer_after": 0.6200809121000368,
+      "wer_delta": -0.012504597278411134,
+      "cer_before": 0.16494991830645733,
+      "cer_after": 0.18256730837536406,
+      "cer_delta": 0.017617390068906724,
+      "n_candidates": 738,
+      "n_words": 2649,
+      "n_rewritten": 374
+    },
+    {
+      "threshold": 0.7,
+      "wer_before": 0.6325855093784479,
+      "wer_after": 0.6149319602795146,
+      "wer_delta": -0.017653549098933352,
+      "cer_before": 0.16494991830645733,
+      "cer_after": 0.19748525964338992,
+      "cer_delta": 0.03253534133693259,
+      "n_candidates": 1340,
+      "n_words": 2649,
+      "n_rewritten": 638
+    },
+    {
+      "threshold": 1.0,
+      "wer_before": 0.6325855093784479,
+      "wer_after": 0.6189775652813534,
+      "wer_delta": -0.013607944097094538,
+      "cer_before": 0.16494991830645733,
+      "cer_after": 0.21098245364779428,
+      "cer_delta": 0.046032535341336944,
+      "n_candidates": 2649,
+      "n_words": 2649,
+      "n_rewritten": 895
+    }
+  ]
+}
