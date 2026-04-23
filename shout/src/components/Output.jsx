@@ -1,14 +1,65 @@
 import { State, isLoading } from '../stores/state.js';
+import { buildInterpunctParts } from '../libs/morpheme.js';
+import MorphemeToggle from './MorphemeToggle.jsx';
+
+// p > 0.7 → high, p > 0.4 → medium, p ≤ 0.4 → low
+const confidenceLevel = (p) => p > 0.7 ? 'high' : p > 0.4 ? 'medium' : 'low';
 
 /**
- * Displays transcription output with confidence indicator.
+ * Displays transcription output with token-level confidence highlighting.
  */
 export function Output() {
-  const confidence = State.confidence.value;
-  const confidenceLevel =
-    confidence > 0.7 ? 'high' : confidence > 0.4 ? 'medium' : 'low';
+  const confidenceMin = State.confidence.value;
+  const confidenceAvg = State.confidenceAvg.value;
+  const showInterpunct = State.showInterpunct.value;
 
+  const tokens = State.tokens.value;
+  const hasTokens = tokens && tokens.length > 0;
   const hasTranscript = State.transcript.value && State.transcript.value.trim();
+
+  const renderTranscriptionBox = (text, resTokens) => {
+    const localHasTokens = resTokens && resTokens.length > 0;
+    const localHasTranscript = text && text.trim();
+
+    return (
+      <div class={`transcription-box ${!localHasTranscript ? 'empty' : ''}`}>
+        {!localHasTranscript
+          ? 'No result available.'
+          : localHasTokens
+          ? (showInterpunct ? buildInterpunctParts(resTokens) : resTokens).map((item, i) =>
+              item.kind === 'separator' ? (
+                <span key={item.key ?? i} class={`interpunct-dot ${item.className || ''}`}>
+                  ·
+                </span>
+              ) : (
+                <span
+                  key={item.key ?? i}
+                  class={item.className ?? `token confidence-${confidenceLevel(item.p)} ${item.reconstructed ? 'reconstructed' : ''}`}
+                  title={item.title ?? `${item.reconstructed ? '[Reconstructed] ' : ''}p=${(item.p * 100).toFixed(1)}%`}
+                >
+                  {item.text}
+                </span>
+              )
+            )
+          : text}
+      </div>
+    );
+  };
+
+  const renderMetaRow = (res) => {
+    const level = res.confidence > 0.7 ? 'high' : res.confidence > 0.4 ? 'medium' : 'low';
+    return (
+      <div class="meta-row">
+        <span class={`confidence-badge ${level}`}>
+          Min {(res.confidence * 100).toFixed(0)}%
+        </span>
+        <span class="metric">Avg {(res.confidenceAvg * 100).toFixed(0)}%</span>
+        {res.reconstructed && (
+          <span class="badge">Reconstructed</span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div class="section output-section">
@@ -17,30 +68,111 @@ export function Output() {
       {isLoading.value ? (
         <div class="processing">
           <span class="spinner" />
-          <span>Loading model...</span>
+          {State.loadPhase.value === 'downloading' ? (
+            <div class="download-progress">
+              <span>
+                Downloading model...{' '}
+                {State.downloadProgress.value > 0
+                  ? `${(State.downloadProgress.value * 100).toFixed(0)}%`
+                  : ''}
+              </span>
+              <div class="progress-bar">
+                <div
+                  class="progress-fill"
+                  style={{ width: `${(State.downloadProgress.value * 100).toFixed(1)}%` }}
+                />
+              </div>
+            </div>
+          ) : State.loadPhase.value === 'cached' ? (
+            <span>Loading model from cache...</span>
+          ) : State.loadPhase.value === 'initializing' ? (
+            <span>Initializing model...</span>
+          ) : (
+            <span>Loading model...</span>
+          )}
         </div>
       ) : State.isProcessing.value ? (
         <div class="processing">
           <span class="spinner" />
           <span>Transcribing...</span>
         </div>
-      ) : (
-        <>
-          <div class={`transcription-box ${!hasTranscript ? 'empty' : ''}`}>
-            {hasTranscript
-              ? State.transcript.value
-              : 'Record or upload audio to begin.'}
+      ) : State.comparisonMode.value && State.comparisonResults.value ? (
+        <div class="comparison-container">
+          <div class="comparison-item">
+            <div class="comparison-label">Selected Language (Reconstructed)</div>
+            {renderTranscriptionBox(
+              State.comparisonResults.value.withReconstruction.transcript,
+              State.comparisonResults.value.withReconstruction.tokens
+            )}
+            {renderMetaRow(State.comparisonResults.value.withReconstruction)}
           </div>
 
+          <div class="comparison-item">
+            <div class="comparison-label">Selected Language (Raw)</div>
+            {renderTranscriptionBox(
+              State.comparisonResults.value.withoutReconstruction.transcript,
+              State.comparisonResults.value.withoutReconstruction.tokens
+            )}
+            {renderMetaRow(State.comparisonResults.value.withoutReconstruction)}
+          </div>
+
+          <div class="comparison-item">
+            <div class="comparison-label">Base English</div>
+            {renderTranscriptionBox(
+              State.comparisonResults.value.baseEnglish.transcript,
+              State.comparisonResults.value.baseEnglish.tokens
+            )}
+            {renderMetaRow(State.comparisonResults.value.baseEnglish)}
+          </div>
+          
           {hasTranscript && (
-            <div class="meta-row">
-              <span class={`confidence-badge ${confidenceLevel}`}>
-                {(confidence * 100).toFixed(0)}% confident
-              </span>
-              {State.reconstructed.value && (
-                <span class="badge">Reconstructed</span>
-              )}
+            <div class="toggle-row">
+              <MorphemeToggle
+                label="Interpunct"
+                checked={showInterpunct}
+                onToggle={(state) => (State.showInterpunct.value = state)}
+              />
             </div>
+          )}
+
+          <div class="meta-row" style={{ marginTop: '0.5rem', borderTop: '1px solid var(--her-sand)', paddingTop: '0.75rem' }}>
+             <span class="metric">
+                {State.metrics.value.latency.toFixed(0)} ms
+              </span>
+              <span class="metric">
+                RTF {State.metrics.value.rtf.toFixed(2)}
+              </span>
+          </div>
+        </div>
+      ) : (
+        <>
+          {renderTranscriptionBox(State.transcript.value, tokens)}
+
+          {hasTranscript && (
+            <>
+              <div class="toggle-row">
+                <MorphemeToggle
+                  label="Interpunct"
+                  checked={showInterpunct}
+                  onToggle={(state) => (State.showInterpunct.value = state)}
+                />
+              </div>
+              <div class="meta-row">
+                <span class={`confidence-badge ${confidenceLevel(confidenceMin)}`}>
+                  Min {(confidenceMin * 100).toFixed(0)}%
+                </span>
+                <span class="metric">Avg {(confidenceAvg * 100).toFixed(0)}%</span>
+                {State.reconstructed.value && (
+                  <span class="badge">Reconstructed</span>
+                )}
+                <span class="metric">
+                  {State.metrics.value.latency.toFixed(0)} ms
+                </span>
+                <span class="metric">
+                  RTF {State.metrics.value.rtf.toFixed(2)}
+                </span>
+              </div>
+            </>
           )}
         </>
       )}
