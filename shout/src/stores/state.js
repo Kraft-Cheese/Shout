@@ -48,6 +48,17 @@ export const State = {
 
   /** Error message for UI display */
   error: signal(null),
+
+  /** Routing / Navigation */
+  view: signal('main'), // 'main' | 'evaluate'
+
+  /** Evaluation Progress */
+  evalProgress: signal({
+    current: 0,
+    total: 0,
+    status: 'idle', // 'idle' | 'running' | 'done' | 'error'
+    results: [],
+  }),
 };
 
 // Derived state (computed signals)

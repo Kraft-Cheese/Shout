@@ -1,10 +1,10 @@
 import * as Comlink from 'comlink';
 import { State } from '../stores/state.js';
 import { reconstruct, reconstructTokens } from '../lib/reconstruct.js';
+import { calculateWER, calculateCER, calculateF1 } from '../lib/metrics.js';
 
 /**
  * Worker bridge for Whisper ASR inference.
- * Communicates with whisper.workerThread.js via Comlink.
  */
 
 const SAMPLE_RATE = 16000;
@@ -289,4 +289,92 @@ export async function transcribe(audio) {
   } finally {
     State.isProcessing.value = false;
   }
+}
+
+/**
+ * Simplified transcription for batch evaluation.
+ * Does not update global UI state except for errors.
+ */
+export async function transcribeBatch(audio, targetLang, referenceText = '') {
+  if (!workerInitialized || !whisper) {
+    throw new Error('Worker not initialized.');
+  }
+
+  const start = performance.now();
+  const result = await whisper.transcribe(audio);
+  const latency = performance.now() - start;
+
+  const audioDurationMs = (audio.length / SAMPLE_RATE) * 1000;
+  const rtf = latency / audioDurationMs;
+
+  const vocab = vocabCache[targetLang] ?? null;
+
+  const processResult = (res, applyReconstruction) => {
+    const cleanTokens = sanitizeTokens(res.tokens ?? []);
+    const tokenText = buildTextFromTokens(cleanTokens);
+    const rawText = sanitizeText(res.text);
+    const baseText = !rawText || (!/\s/.test(rawText) && tokenText) ? tokenText : rawText;
+    const confidenceStats = computeSegmentConfidence(res.confidence, cleanTokens);
+
+    let finalText = baseText;
+    let wasReconstructed = false;
+
+    if (applyReconstruction && confidenceStats.min < TAU && vocab) {
+      if (res.tokens && res.tokens.length > 0) {
+        const { text, changed } = reconstructTokens(res.tokens, vocab, targetLang, TAU);
+        if (changed > 0) {
+          finalText = sanitizeText(text);
+          wasReconstructed = true;
+        }
+      } else {
+        const { text, changed } = reconstruct(baseText, vocab, targetLang);
+        if (changed > 0) {
+          finalText = sanitizeText(text);
+          wasReconstructed = true;
+        }
+      }
+    }
+
+    return {
+      transcript: finalText,
+      baseText: baseText,
+      confidence: confidenceStats.min,
+      reconstructed: wasReconstructed,
+    };
+  };
+
+  const processed = processResult(result, true);
+  const raw = processResult(result, false);
+
+  const calculateAllMetrics = (text) => {
+    const m = {
+      wer: referenceText ? calculateWER(referenceText, text) : 0,
+      cer: referenceText ? calculateCER(referenceText, text) : 0,
+    };
+
+    if (referenceText) {
+      const f1 = calculateF1(referenceText, text);
+      m.f1_morpheme = f1.morphemeF1;
+      m.f1_boundary = f1.boundaryF1;
+    } else {
+      m.f1_morpheme = 0;
+      m.f1_boundary = 0;
+    }
+    return m;
+  };
+
+  const rawMetrics = calculateAllMetrics(raw.transcript);
+  const finalMetrics = calculateAllMetrics(processed.transcript);
+
+  return {
+    rawText: raw.transcript,
+    rawMetrics,
+    reconstruction: processed.reconstructed,
+    finalText: processed.transcript,
+    finalMetrics,
+    metrics: {
+      latency,
+      rtf
+    }
+  };
 }

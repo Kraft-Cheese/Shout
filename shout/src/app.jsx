@@ -5,6 +5,7 @@ import { initWorker, loadModel } from './workers/worker.js';
 import { LanguageSelect } from './components/LanguageSelect';
 import { Recorder } from './components/Recorder';
 import { Output } from './components/Output';
+import { Evaluation } from './components/Evaluation';
 
 /**
  * Main application component for Shout - Privacy-preserving ASR.
@@ -20,11 +21,29 @@ export function App() {
     });
   }, []);
 
+  const navigate = (view) => {
+    State.view.value = view;
+  };
+
   return (
     <main id="shout-app">
       <header class="app-header">
         <h1>SHOUT</h1>
         <p>Private, on-device ASR</p>
+        <nav class="app-nav">
+          <button 
+            class={State.view.value === 'main' ? 'active' : ''} 
+            onClick={() => navigate('main')}
+          >
+            ASR
+          </button>
+          <button 
+            class={State.view.value === 'evaluate' ? 'active' : ''} 
+            onClick={() => navigate('evaluate')}
+          >
+            Evaluate
+          </button>
+        </nav>
       </header>
 
       <div class="main-card">
@@ -36,9 +55,15 @@ export function App() {
           </div>
         )}
 
-        <LanguageSelect />
-        <Recorder />
-        <Output />
+        {State.view.value === 'main' ? (
+          <>
+            <LanguageSelect />
+            <Recorder />
+            <Output />
+          </>
+        ) : (
+          <Evaluation />
+        )}
       </div>
 
     </main>
