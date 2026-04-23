@@ -54,7 +54,7 @@ function sanitizeTokenText(text) {
 
 function sanitizeTokens(tokens = []) {
   return tokens
-    .map((t) => ({ ...t, text: sanitizeTokenText(t.text) }))
+    .map((t) => ({ ...t, text: sanitizeTokenText(t.text), reconstructed: t.reconstructed ?? false }))
     .filter((t) => t.text.trim().length > 0);
 }
 
@@ -174,6 +174,36 @@ export async function loadModel(language) {
   }
 }
 
+export async function loadModelFromFile(file) {
+  if (!workerInitialized || !whisper) {
+    State.error.value = 'Worker not initialized. Please refresh the page.';
+    return;
+  }
+
+  State.modelStatus.value = 'loading';
+  State.loadPhase.value = 'initializing';
+  State.downloadProgress.value = null;
+  State.error.value = null;
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    await whisper.loadFromBytes(
+      State.language.value,
+      State.useQuantized.value,
+      Comlink.transfer(bytes, [bytes.buffer])
+    );
+
+    State.loadPhase.value = null;
+    State.modelStatus.value = 'ready';
+  } catch (err) {
+    console.error('[worker] loadModelFromFile failed:', err);
+    State.loadPhase.value = null;
+    State.modelStatus.value = 'error';
+    State.error.value = err.message;
+  }
+}
+
 export async function transcribe(audio) {
   if (!workerInitialized || !whisper) {
     State.error.value = 'Worker not initialized.';
@@ -204,11 +234,12 @@ export async function transcribe(audio) {
       const confidenceStats = computeSegmentConfidence(res.confidence, cleanTokens);
 
       let finalText = baseText;
+      let finalTokens = cleanTokens;
       let wasReconstructed = false;
 
       if (applyReconstruction && confidenceStats.min < TAU && vocab) {
         if (res.tokens && res.tokens.length > 0) {
-          const { text, changed } = reconstructTokens(
+          const { text, tokens: reconstructedTokens, changed } = reconstructTokens(
             res.tokens,
             vocab,
             vocabLang,
@@ -216,6 +247,7 @@ export async function transcribe(audio) {
           );
           if (changed > 0) {
             finalText = sanitizeText(text);
+            finalTokens = sanitizeTokens(reconstructedTokens);
             wasReconstructed = true;
           }
         } else {
@@ -231,7 +263,7 @@ export async function transcribe(audio) {
         transcript: finalText,
         confidence: confidenceStats.min,
         confidenceAvg: confidenceStats.avg,
-        tokens: cleanTokens,
+        tokens: finalTokens,
         reconstructed: wasReconstructed,
       };
     };

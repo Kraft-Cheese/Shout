@@ -2,10 +2,12 @@ import { useEffect } from 'preact/hooks';
 import './app.css';
 import { State, isError } from './stores/state.js';
 import { initWorker, loadModel } from './workers/worker.js';
+import { checkCapabilities } from './libs/capabilities.js';
 import { LanguageSelect } from './components/LanguageSelect';
 import { Recorder } from './components/Recorder';
 import { Output } from './components/Output';
 import { Evaluation } from './components/Evaluation';
+import { UploadControl } from './components/UploadControl.jsx';
 
 /**
  * Main application component for Shout - Privacy-preserving ASR.
@@ -13,12 +15,18 @@ import { Evaluation } from './components/Evaluation';
 export function App() {
   // Initialize worker on mount
   useEffect(() => {
-    initWorker().then((success) => {
+    (async () => {
+      const { issues } = await checkCapabilities();
+      const blocking = issues.find(i => i.includes('WebAssembly'));
+      if (blocking) { State.error.value = blocking; return; }
+      if (issues.length > 0) console.warn('[shout] capability warnings:', issues);
+
+      const success = await initWorker();
       if (success) {
         // Auto-load default language model
         loadModel(State.language.value);
       }
-    });
+    })();
   }, []);
 
   const navigate = (view) => {
@@ -27,9 +35,10 @@ export function App() {
 
   return (
     <main id="shout-app">
-      <header class="app-header">
-        <h1>SHOUT</h1>
-        <p>Private, on-device ASR</p>
+      <header class="app-toolbar">
+        <div class="toolbar-left">
+          <h1>SHOUT</h1>
+        </div>
         <nav class="app-nav">
           <button 
             class={State.view.value === 'main' ? 'active' : ''} 
@@ -46,6 +55,12 @@ export function App() {
         </nav>
       </header>
 
+      {State.view.value === 'main' && (
+        <div class="language-float">
+          <LanguageSelect />
+        </div>
+      )}
+
       <div class="main-card">
         {/* Error Banner */}
         {State.error.value && (
@@ -57,7 +72,6 @@ export function App() {
 
         {State.view.value === 'main' ? (
           <>
-            <LanguageSelect />
             <Recorder />
             <Output />
           </>
@@ -65,6 +79,8 @@ export function App() {
           <Evaluation />
         )}
       </div>
+
+      {State.view.value === 'main' && <UploadControl />}
 
     </main>
   );

@@ -385,6 +385,58 @@ const api = {
     }
   },
 
+  async loadFromBytes(language, quantized = false, bytes) {
+    console.log('[whisper] loadFromBytes() called, language=', language, 'quantized=', quantized, 'bytes=', bytes.byteLength);
+    try {
+      await ensureWasmLoaded();
+      console.log('[whisper] WASM ready, proceeding to write bytes to FS');
+
+      console.log('[whisper] Writing provided bytes to WASM FS...');
+      try { fsUnlinkSafe('/whisper.bin'); } catch (_) {}
+      fsCreateDataFileSafe('/', 'whisper.bin', bytes, true, true);
+
+      const modelFsSize = fsStatSizeSafe('/whisper.bin');
+      console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
+
+      console.log('[whisper] Calling Module.init...');
+      if (ctx && typeof self.Module.free === 'function') {
+        try { self.Module.free(ctx); } catch (e) {}
+      }
+      ctx = null;
+
+      const initLanguages = getInitLanguageFallbacks(language);
+      const initModelPaths = getInitModelPathFallbacks();
+
+      for (const initPath of initModelPaths) {
+        for (const initLang of initLanguages) {
+          try {
+            const candidateCtx = self.Module.init(initPath, initLang);
+            if (candidateCtx) {
+              ctx = candidateCtx;
+              break;
+            }
+          } catch (initErr) {}
+        }
+        if (ctx) break;
+      }
+
+      if (!ctx) {
+        throw new Error('Module.init failed to initialize model from bytes');
+      }
+
+      if (POLYSYNTHETIC_LANGS.has(language)) {
+        self.Module.set_max_tokens(128);
+      }
+
+      isModelLoaded = true;
+      console.log('[whisper] loadFromBytes() complete');
+    } catch (err) {
+      console.error('[whisper] loadFromBytes() failed:', err);
+      isModelLoaded = false;
+      throw err;
+    }
+  },
+
   isReady() {
     return isModelLoaded;
   },

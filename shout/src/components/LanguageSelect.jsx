@@ -32,7 +32,7 @@ export function LanguageSelect() {
   };
 
   return (
-    <div class="section language-select">
+    <div class="language-select language-select-nav">
       <div class="section-label">Language</div>
       <select
         onChange={handleLangChange}
@@ -45,9 +45,8 @@ export function LanguageSelect() {
           </option>
         ))}
       </select>
-      
       <div class="controls-row">
-        <label class="checkbox-toggle">
+        <label class="quantized-toggle">
           <input
             type="checkbox"
             checked={State.useQuantized.value}
@@ -57,7 +56,7 @@ export function LanguageSelect() {
           Quantized (Q5)
         </label>
 
-        <label class="checkbox-toggle">
+        <label class="comparison-toggle">
           <input
             type="checkbox"
             checked={State.comparisonMode.value}
