@@ -1,0 +1,296 @@
+% !TEX program = pdflatex
+% ACL-style project report draft
+% Project: Offline Browser-Based ASR with Post-ASR Reconstruction
+%
+% For the closest ACL formatting, place the official ACL files
+% acl.sty and acl_natbib.bst in this directory, or paste this file into
+% the official ACL Overleaf template. This file includes a small fallback
+% layout so that it still compiles when acl.sty is unavailable, but the
+% official style files should be used for submission-quality formatting.
+
+\documentclass[11pt]{article}
+
+\newif\ifofficialacl
+\IfFileExists{acl.sty}{\officialacltrue}{\officialaclfalse}
+
+\ifofficialacl
+  % Use [review] for an anonymous submission, [final] for camera-ready,
+  % or [preprint] for a class report with author names and page numbers.
+  \usepackage[preprint]{acl}
+\else
+  % Lightweight fallback only. For true ACL formatting, use acl.sty.
+  \usepackage[a4paper,margin=2.5cm]{geometry}
+  \setlength{\columnsep}{0.6cm}
+  \usepackage[authoryear,round]{natbib}
+  \usepackage{xcolor}
+  \usepackage[hyphens]{url}
+  \usepackage[hidelinks]{hyperref}
+  \makeatletter
+  \renewcommand{\maketitle}{%
+    \twocolumn[
+      \begin{center}
+        {\Large\bfseries \@title\par}
+        \vskip 0.6em
+        {\large \@author\par}
+        \vskip 1.0em
+      \end{center}
+    ]
+  }
+  \makeatother
+\fi
+
+% Standard ACL-template packages.
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+
+% Additional packages for a clear project report.
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{enumitem}
+
+\newcommand{\sei}{\textsc{sei}}
+\newcommand{\ncx}{\textsc{ncx}}
+\newcommand{\todo}[1]{\textbf{[TODO: #1]}}
+\newcommand{\wer}{\mathrm{WER}}
+\newcommand{\cer}{\mathrm{CER}}
+
+\title{Offline Browser-Based ASR with Post-ASR Reconstruction for Under-Supported Languages}
+
+\author{Cassandre Hamel \quad Vennila Sooben \quad Jean-Christophe Clou\^atre \quad Imad Benahmed\\
+Universit\'e de Montr\'eal\\
+\texttt{\{TODO:author.email, TODO:author.email, TODO:author.email, TODO:author.email\}@umontreal.ca}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Automatic speech recognition (ASR) remains difficult for low-resource and morphologically complex languages, where word forms can be sparse, highly variable, and poorly represented in large multilingual training sets. This project investigates whether lightweight offline ASR can be made practical in a browser for under-supported languages by combining on-device Whisper inference with a post-ASR lexical reconstruction module. We study Seri (\sei) and Central Puebla Nahuatl (\ncx) using Common Voice data. The proposed pipeline runs inference locally, identifies low-confidence ASR tokens, and corrects them through approximate matching against language-specific vocabularies stored in a BK-tree. Preliminary results from the project poster suggest that monolingual on-device adapters outperform joint models and zero-shot baselines, while confidence-based reconstruction can provide small improvements but may also harm character-level accuracy when replacements are incorrect. These findings indicate that browser-based ASR is promising for privacy-preserving access, but that whole-word lexical repair is brittle for polysynthetic and highly productive languages. Future work should move toward subword reconstruction, phonetic representations, finite-state constraints, and human-in-the-loop correction.
+\end{abstract}
+
+\section{Introduction}
+
+Automatic speech recognition has improved substantially with large multilingual models such as Whisper \citep{radford2023robust}. However, the benefits of these models are not distributed equally across languages. Low-resource languages often have limited transcribed speech, smaller speaker coverage, and fewer standardized lexical resources. The problem is especially challenging for polysynthetic and morphologically complex languages, where a single orthographic word may encode information that would span a full phrase or sentence in languages with less complex morphology \citep{gupta-boulianne-2020-automatic,leferrand-etal-2024-modern}. As a result, ASR systems may face high out-of-vocabulary rates, unstable word boundaries, and large gaps between character-level and word-level performance.
+
+This report describes a class project on offline browser-based ASR with post-ASR reconstruction. The motivation is both technical and social: browser-based inference can provide privacy, local control, and offline access, while better ASR for under-supported languages can support transcription, documentation, and language-technology access. The project asks the following research question:
+
+\begin{quote}
+\emph{Can post-ASR reconstruction make lightweight offline browser ASR practical for under-supported languages?}
+\end{quote}
+
+The system combines three ingredients. First, it uses Whisper-style ASR as a strong multilingual base model. Second, it adapts the model to individual languages through language-specific adapters. Third, it applies a confidence-based lexical reconstruction step that replaces uncertain ASR tokens with nearby entries from a language-specific vocabulary. The poster reports experiments on Seri and Central Puebla Nahuatl, including off-device and on-device settings, evaluated with WER, CER, token F1, and boundary F1. The central empirical finding is that monolingual on-device adapters outperform joint multilingual adapters and zero-shot baselines, while lexical reconstruction is useful only when confidence thresholds and lexical candidates are well controlled.
+
+The main contributions of this project report are:
+\begin{enumerate}[leftmargin=*,noitemsep]
+    \item an offline browser-oriented ASR pipeline for under-supported languages;
+    \item a confidence-based lexical reconstruction method using BK-trees and Levenshtein distance;
+    \item a preliminary evaluation on Seri and Central Puebla Nahuatl Common Voice data; and
+    \item an analysis of when lexical reconstruction helps or hurts ASR evaluation metrics.
+\end{enumerate}
+
+\section{Related Work}
+
+\paragraph{Low-resource and Indigenous-language ASR.}
+Common Voice provides a multilingual, crowd-sourced speech corpus intended for ASR and related speech tasks \citep{ardila-etal-2020-common}. Prior work on Indigenous and polysynthetic languages has shown that ASR for these settings is complicated by data scarcity, vocabulary sparsity, and morphology. \citet{gupta-boulianne-2020-automatic} report high out-of-vocabulary challenges for Inuktitut, while \citet{leferrand-etal-2024-modern} examine how modern ASR architectures behave across morphologically complex languages. \citet{romero2024automatic} study ASR for Indigenous languages of the Americas and show that data quality, hyperparameter choices, and language complexity remain major determinants of performance.
+
+\paragraph{Whisper and on-device inference.}
+Whisper is a large-scale weakly supervised ASR model trained on multilingual and multitask speech data \citep{radford2023robust}. For browser-based or local deployment, the project builds on the idea of efficient local inference through implementations such as \texttt{whisper.cpp}, a C/C++ implementation of Whisper inference designed for efficient CPU and edge deployment \citep{whispercpp}. This deployment direction is important for privacy and offline access, since audio does not need to be sent to a remote service.
+
+\paragraph{Parameter-efficient adaptation.}
+Instead of fully fine-tuning a complete model for each language, parameter-efficient methods can adapt a frozen model through small trainable modules. Low-Rank Adaptation (LoRA) freezes base weights and adds trainable low-rank matrices \citep{hu2021lora}. LoRA-Whisper extends this idea to multilingual ASR and addresses language interference and expansion \citep{song2024lora}. This project uses the same broad motivation: language-specific adaptation can improve under-supported language recognition while keeping deployment lightweight.
+
+\paragraph{Post-ASR reconstruction.}
+The reconstruction stage is inspired by work that separates ASR into a simplified prediction problem followed by a reconstruction module. \citet{diwan2021reduce} propose a reduce-and-reconstruct approach for low-resource phonetic languages, using a finite-state reconstruction module after ASR. In contrast, this project uses confidence-based lexical repair: the ASR output is produced normally, but low-confidence tokens are mapped to vocabulary neighbors using approximate string matching.
+
+\section{Data}
+
+The experiments use Common Voice data for two under-supported languages: Seri and Central Puebla Nahuatl. Table~\ref{tab:data} summarizes the dataset information available from the project poster.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Language & Code & Hours & Speakers & Sentences \\
+\midrule
+Seri & \sei & 11 & 17 & 1,615 \\
+Central Puebla Nahuatl & \ncx & 12 & 41 & 1,044 \\
+\bottomrule
+\end{tabular}
+\caption{Common Voice data used in the project. The exact train/dev/test split, validation policy, and preprocessing decisions should be added once the final experiment log is available.}
+\label{tab:data}
+\end{table}
+
+Seri and Nahuatl are challenging evaluation cases because available transcribed speech is limited and morphology can generate many valid word forms. This matters for both WER and lexical reconstruction. A whole-word dictionary may fail to contain many valid forms, while a character-level metric may reward near-correct outputs that a dictionary-based replacement would incorrectly alter. Before final submission, this section should specify the Common Voice version, filtering rules, audio normalization, train/dev/test partitions, and whether any speaker-level separation was enforced.
+
+\section{Methodology}
+
+Figure~\ref{fig:pipeline} gives a high-level overview of the system. The pipeline has two main stages: on-device ASR inference and post-ASR lexical reconstruction.
+
+\begin{figure*}[t]
+\centering
+\fbox{%
+\begin{minipage}{0.92\textwidth}
+\centering
+\vspace{0.6em}
+\textbf{Audio input} $\rightarrow$ \textbf{Browser / on-device Whisper inference} $\rightarrow$ \textbf{Token confidence extraction} $\rightarrow$ \textbf{BK-tree lexical reconstruction} $\rightarrow$ \textbf{Corrected transcript}\\[0.8em]
+\emph{Replace this box with the final architecture diagram, browser screenshot, or poster workflow figure.}
+\vspace{0.6em}
+\end{minipage}}
+\caption{Overview of the offline browser-based ASR pipeline. The ASR model produces token hypotheses and confidence scores. Tokens below a threshold are passed to a language-specific lexical reconstruction module.}
+\label{fig:pipeline}
+\end{figure*}
+
+\subsection{On-Device ASR}
+
+The first stage transcribes audio locally using a Whisper-based model. In the intended deployment setting, inference runs inside the browser or through a browser-compatible runtime, so the user can transcribe speech without uploading audio to an external server. The poster distinguishes off-device and on-device settings; the final report should specify the exact runtime, model size, quantization level, hardware, and browser environment.
+
+The project compares zero-shot Whisper, joint multilingual adaptation, and monolingual language-specific adapters. The poster reports that monolingual on-device adapters perform best, suggesting that language-specific adaptation is more robust than a single joint adapter for these two languages. This is consistent with the possibility of language interference in multilingual ASR, especially when the languages have limited and imbalanced data.
+
+\subsection{Lexical Reconstruction}
+
+The second stage performs confidence-based lexical reconstruction. Let $\hat{\mathbf{y}} = (\hat{y}_1, \ldots, \hat{y}_n)$ be the token sequence predicted by the ASR model, and let $c_i$ be the confidence score associated with token $\hat{y}_i$. For each language $L$, the system builds a vocabulary $V_L$ from corpus-derived lexical entries and indexes it in a BK-tree. A BK-tree supports efficient approximate string matching under edit distance, here Levenshtein distance.
+
+For each token, the system compares its confidence against a threshold $\tau$. If $c_i \leq \tau$, the token is treated as uncertain. The BK-tree is queried to find a near lexical neighbor:
+\begin{equation}
+    v_i^* = \arg\min_{v \in V_L} d_{\mathrm{lev}}(\hat{y}_i, v),
+\end{equation}
+where $d_{\mathrm{lev}}$ is Levenshtein distance. If the nearest neighbor is within a maximum allowed distance $d_{\max}$, the token is replaced; otherwise it is left unchanged. The final transcript is the sequence after all eligible replacements.
+
+\begin{algorithm}[t]
+\small
+\caption{Confidence-based lexical reconstruction}
+\label{alg:reconstruction}
+\begin{algorithmic}[1]
+\Require ASR tokens $\hat{\mathbf{y}}$, confidences $\mathbf{c}$, vocabulary $V_L$, threshold $\tau$, maximum distance $d_{\max}$
+\State Build or load BK-tree $B_L$ from $V_L$
+\For{$i = 1$ to $n$}
+    \If{$c_i \leq \tau$}
+        \State $(v_i^*, d_i) \gets \mathrm{NearestNeighbor}(B_L, \hat{y}_i)$
+        \If{$d_i \leq d_{\max}$}
+            \State $\hat{y}_i \gets v_i^*$
+        \EndIf
+    \EndIf
+\EndFor
+\State \Return reconstructed token sequence $\hat{\mathbf{y}}$
+\end{algorithmic}
+\end{algorithm}
+
+A representative example from the poster is the Nahuatl token \texttt{amachotiyol}, which receives confidence 0.68 and is mapped by the BK-tree to \texttt{amachotiyotl}. This example illustrates the intended behavior: when the ASR output is close to a valid lexical item, approximate matching can correct a likely spelling or recognition error. However, the same mechanism can hurt performance when the closest vocabulary item is not the intended word, when the vocabulary lacks productive forms, or when the ASR output is already character-close to the reference but not present in the lexicon.
+
+\section{Experimental Setup}
+
+\subsection{Systems Compared}
+
+The final experiments should compare at least the following systems:
+\begin{enumerate}[leftmargin=*,noitemsep]
+    \item \textbf{Zero-shot Whisper:} base model without language-specific adaptation.
+    \item \textbf{Joint adapter:} a single adapter trained on both languages.
+    \item \textbf{Monolingual adapter:} one adapter per language.
+    \item \textbf{Adapter + reconstruction:} monolingual or joint adapter followed by confidence-based lexical reconstruction.
+\end{enumerate}
+
+The report should add exact model names, adapter rank, learning rate, batch size, number of epochs, decoding strategy, and quantization settings. It should also state whether thresholds are tuned on a development set and then fixed for test evaluation.
+
+\subsection{Evaluation Metrics}
+
+The poster evaluates systems using word error rate (WER), character error rate (CER), token F1, and boundary F1. WER is defined as
+\begin{equation}
+    \wer = \frac{S + D + I}{N},
+\end{equation}
+where $S$, $D$, and $I$ are substitutions, deletions, and insertions relative to the reference, and $N$ is the number of reference words. CER is computed analogously over characters. Token F1 measures overlap between predicted and reference tokens, while boundary F1 evaluates whether predicted word boundaries align with reference boundaries. Boundary-aware metrics are especially relevant for morphologically complex languages because segmentation errors can dominate WER even when many characters are recognized correctly.
+
+\subsection{Threshold Selection}
+
+The reconstruction threshold $\tau$ controls the trade-off between correcting uncertain tokens and avoiding unnecessary replacements. The poster reports that the best threshold is approximately in the range $0.6$--$0.7$ for both Seri and Nahuatl. In the final version, this section should include a development-set plot of WER, CER, token F1, and boundary F1 as functions of $\tau$, and should state the selected threshold before test-set evaluation.
+
+\section{Results}
+
+Table~\ref{tab:main-results} provides a results table layout. The qualitative claims are filled using the poster, while exact numerical values should be inserted from the final experiment logs.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}llllrrrr@{}}
+\toprule
+Language & Setting & Model & Reconstruction & WER $\downarrow$ & CER $\downarrow$ & Token F1 $\uparrow$ & Boundary F1 $\uparrow$ \\
+\midrule
+Seri (\sei) & On-device & Zero-shot Whisper & No & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+Seri (\sei) & On-device & Joint adapter & No & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+Seri (\sei) & On-device & Monolingual adapter & No & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+Seri (\sei) & On-device & Monolingual adapter & BK-tree & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+\midrule
+Nahuatl (\ncx) & On-device & Zero-shot Whisper & No & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+Nahuatl (\ncx) & On-device & Joint adapter & No & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+Nahuatl (\ncx) & On-device & Monolingual adapter & No & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+Nahuatl (\ncx) & On-device & Monolingual adapter & BK-tree & \todo{value} & \todo{value} & \todo{value} & \todo{value} \\
+\bottomrule
+\end{tabular}
+\caption{Main ASR results. Replace placeholders with final held-out test results. The poster reports that monolingual on-device adapters outperform joint models by roughly 10 absolute WER points and zero-shot baselines by more than 60\%, but the exact table values should be verified from the experiment logs.}
+\label{tab:main-results}
+\end{table*}
+
+\subsection{Adapter Results}
+
+The strongest result from the poster is that monolingual adapters outperform joint models in the on-device setting. This suggests that the benefit of language-specific modeling outweighs the possible benefit of pooling scarce data across Seri and Nahuatl. One interpretation is that the two languages differ enough in orthography, morphology, and acoustic-phonetic patterns that a shared adapter introduces interference. A second possibility is that the joint model is harder to tune because the datasets are small and not balanced by speaker, sentence, or morphology. The final report should test this interpretation by adding per-language development curves and, if possible, matched training budgets.
+
+\subsection{Reconstruction Results}
+
+The reconstruction module brings smaller and less consistent gains. The poster reports that confidence-based word or token reconstruction can improve some scores, but it can also increase CER when incorrect replacements are made. This behavior is expected: a vocabulary replacement can reduce WER if it maps a noisy output to the exact reference token, but it can increase CER if it changes a nearly correct token into a different vocabulary item. The risk is higher for polysynthetic languages, where many valid word forms may be absent from a finite whole-word dictionary.
+
+\subsection{Threshold Analysis}
+
+The best reconstruction threshold appears to be around $\tau \in [0.6, 0.7]$ for both languages. Lower thresholds are conservative and may miss correctable errors, while higher thresholds trigger more replacements and increase the chance of false corrections. The final report should include a figure similar to Figure~\ref{fig:threshold-placeholder}, separating WER and CER trends by language.
+
+\begin{figure}[t]
+\centering
+\fbox{%
+\begin{minipage}{0.90\columnwidth}
+\centering
+\vspace{1.5em}
+\textbf{Threshold sweep placeholder}\\
+Plot WER/CER/F1 versus $\tau$ for Seri and Nahuatl.\\
+Mark the selected threshold, approximately $0.6$--$0.7$.
+\vspace{1.5em}
+\end{minipage}}
+\caption{Placeholder for reconstruction threshold analysis. The final figure should show whether reconstruction improves WER without degrading CER.}
+\label{fig:threshold-placeholder}
+\end{figure}
+
+\section{Discussion}
+
+The results point to a tension between deployability and linguistic adequacy. On-device ASR is attractive because it preserves privacy and can work offline, and the poster results suggest that small language-specific adapters can make such deployment substantially more effective than zero-shot inference. However, lexical reconstruction exposes the limits of simple post-processing. A whole-word vocabulary is easy to build and query, but it is not expressive enough for languages with highly productive morphology. The method can repair obvious near-misses, yet it can also force valid or near-valid outputs into the wrong dictionary entry.
+
+This suggests that future reconstruction should operate below the word level. Byte-pair encodings, unigram language-model tokenization, or other unsupervised subword units could reduce out-of-vocabulary failures. Phonetic or IPA-based outputs may also help when orthographic conventions are variable or when the ASR model confuses acoustically similar spellings. Rule-based finite-state transducers could constrain reconstruction using language-specific morphology, extending the idea of reduce-and-reconstruct systems while remaining interpretable. Finally, human-in-the-loop reconstruction would allow community members, linguists, or annotators to accept, reject, or modify candidate corrections rather than relying entirely on automatic lexical replacement.
+
+\section{Conclusion}
+
+This project studies whether offline browser-based ASR can be made practical for under-supported languages through post-ASR reconstruction. Using Seri and Central Puebla Nahuatl Common Voice data, the system combines on-device Whisper inference, language-specific adapters, and confidence-based BK-tree lexical correction. Preliminary findings show that monolingual adapters are the most important component, producing large gains over joint and zero-shot baselines. Lexical reconstruction is promising but fragile: it can improve word-level outputs when ASR errors are close to known vocabulary entries, but it can harm character-level metrics when replacements are wrong. Overall, the project supports local ASR as a promising direction for privacy-preserving language technology, while showing that reconstruction for morphologically complex languages should move beyond whole-word dictionaries.
+
+\section{Limitations}
+
+This first draft is limited by the information available in the poster and should be updated with final experiment logs. The current report does not yet include exact train/dev/test splits, hyperparameters, hardware measurements, runtime latency, memory usage, or complete numerical results. The experiments cover only two languages and rely on Common Voice, whose speaker distribution and prompt style may not match real deployment contexts. The lexical reconstruction method uses a finite whole-word vocabulary, which is poorly suited to highly productive morphology and can introduce false corrections. Finally, the report does not yet include human evaluation, community feedback, or a systematic analysis of whether corrections are linguistically appropriate.
+
+\section{Ethics Statement}
+
+ASR for Indigenous and under-supported languages should be developed with care. Offline browser-based inference can reduce privacy risks because audio can remain on the user's device, but privacy alone is not sufficient. Data collection, model training, and deployment should respect community consent, data governance expectations, licensing, and the purposes for which speakers contributed recordings. The system should not be presented as a replacement for human expertise, and automatic corrections should be auditable. Future work should include community-centered evaluation and mechanisms for speakers or language experts to control how outputs are corrected, stored, and shared.
+
+\section*{Acknowledgments}
+
+This project was supervised within IFT 6289 NLP Deep Learning, Winter 2026. The implementation builds on Whisper, \texttt{whisper.cpp}, LoRA, PEFT, and Common Voice. We thank the Seri and Nahuatl language communities whose data makes this work possible. \todo{Adjust wording according to course and data-use requirements.}
+
+\ifofficialacl
+  % acl.sty already sets the ACL bibliography style.
+\else
+  \bibliographystyle{plainnat}
+\fi
+\bibliography{acl_project_report_references}
+
+\end{document}
