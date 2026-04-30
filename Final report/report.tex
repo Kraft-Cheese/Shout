@@ -1,0 +1,284 @@
+\documentclass[11pt]{article}
+\usepackage[final]{acl}
+
+\title{Offline Browser-Based ASR with Post-ASR Reconstruction for Under-Supported Languages}
+
+\author{
+Cassandre Hamel \quad Vennila Sooben \quad Jean-Christophe Clouatre \quad Imad Benahmed\\
+Universit\'e de Montr\'eal\\
+\texttt{\{cassandre.hamel, vennila.sooben, jean-christophe.clouatre, imad.benahmed\}@umontreal.ca}
+}
+
+\date{IFT 6289 NLP Deep Learning, Winter 2026}
+
+\begin{document}
+\twocolumn[
+\maketitle
+\begin{abstract}
+Automatic speech recognition (ASR) remains difficult for languages with limited transcribed audio and productive morphology. This report presents \textit{Shout}, a course project that studies whether lightweight ASR can be made practical in a browser for under-supported languages by combining local Whisper inference, parameter-efficient language adaptation, and post-ASR lexical reconstruction. We focus on Seri (SEI) and Central Puebla Nahuatl (NCX), two Common Voice languages with roughly 11--12 hours of speech each. The repository contains a Vite/Preact browser prototype, Whisper/LoRA training and evaluation scripts, zero-shot baselines, adapted-model metrics, and reconstruction analyses. Zero-shot Whisper-small performs poorly on both languages, with WER 1.351 for SEI and 1.777 for NCX. A SEI LoRA adapter reduces WER to 0.611, and the available NCX adapted evaluation reaches WER 0.154. A simple BK-tree lexical reconstruction step improves zero-shot WER slightly for SEI and more substantially for NCX, but browser-trace metrics show that whole-word correction can also degrade CER and WER when replacements are wrong. The results support local, privacy-preserving ASR as a promising deployment direction, while showing that reconstruction for morphologically complex languages should move beyond whole-word dictionaries toward subword, phonetic, finite-state, or human-in-the-loop correction.
+\end{abstract}
+\vspace{1em}
+]
+
+\section{Introduction}
+
+Large multilingual ASR models have changed the practical baseline for speech transcription, but their gains are unevenly distributed across languages. Systems such as Whisper \citep{radford2023whisper} are trained on large multilingual corpora and can often transcribe unseen languages at a useful level, yet low-resource languages still suffer from limited speaker coverage, scarce labeled audio, domain mismatch, and unstable orthographic conventions. These problems are amplified for morphologically complex and polysynthetic languages, where a single orthographic word may encode information that would be expressed as a phrase or clause in less synthetic languages \citep{gupta2020inuktitut,leferrand2024robust}. In such settings, word-level sparsity makes both training and evaluation difficult: a model can be character-close to the intended output but still receive a high WER, while a lexicon can miss many valid forms.
+
+The project described here asks a practical question: can post-ASR reconstruction make lightweight offline browser ASR practical for under-supported languages? The intended use case is not a server-side benchmark system, but a privacy-preserving browser tool where speech can be recorded, transcribed, and corrected locally. This matters because speech recordings can contain personal, cultural, or community-sensitive content, and because reliable connectivity is not guaranteed in all deployment contexts. A browser application also lowers the barrier for distribution: users do not need to install a Python environment or send audio to a remote service.
+
+The system, named \textit{Shout}, combines three ideas. First, it uses Whisper-style ASR as a strong multilingual foundation. Second, it adapts the model with LoRA adapters, keeping the number of trainable parameters small and allowing one adapter per language \citep{hu2021lora,song2024lorawhisper}. Third, it evaluates a post-processing module that identifies uncertain tokens and maps them to close entries in a language-specific vocabulary using Levenshtein distance. The poster accompanying this report framed the contribution as on-device Whisper inference plus confidence-based lexical correction; the repository scan clarifies that browser worker and confidence plumbing are present, while the most complete reconstruction implementation is the Python evaluation pipeline.
+
+This report makes the following contributions:
+
+\begin{itemize}
+    \item it documents the current Shout architecture and repository artifacts;
+    \item it reports the available SEI and NCX quantitative results from the project logs;
+    \item it analyzes when whole-word BK-tree reconstruction helps or harms ASR metrics;
+    \item it identifies deployment and linguistic limitations that should shape future work.
+\end{itemize}
+
+\section{Related Work}
+
+\subsection{Low-Resource and Indigenous-Language ASR}
+
+Common Voice provides a multilingual, crowd-sourced corpus for ASR research and has enabled experiments in many languages with limited commercial support \citep{ardila2020common}. However, the existence of a dataset does not remove the core low-resource challenge. Indigenous and under-supported languages often have small speaker pools, heterogeneous recording conditions, uneven prompt coverage, and complex language-specific orthographies \citep{romero2024indigenous}. For polysynthetic languages, ASR difficulty is not only acoustic. Word forms may be sparse, long, and compositionally rich, causing high out-of-vocabulary rates and brittle word-boundary decisions \citep{gupta2020inuktitut,leferrand2024robust}.
+
+This has direct consequences for evaluation. WER treats every segmentation decision as a word-level edit, so it can over-penalize outputs that preserve much of the character content but differ in spacing or affixal detail. CER provides a complementary signal, but it can hide linguistically important boundary errors. The project therefore reports WER and CER together with token and boundary F1 proxies.
+
+\subsection{Whisper, LoRA, and Local Inference}
+
+Whisper is a sequence-to-sequence ASR model trained with weak supervision at large scale \citep{radford2023whisper}. Its multilingual transfer makes it a strong starting point for languages with limited labeled audio, but direct zero-shot use remains unreliable for the languages studied here. Parameter-efficient fine-tuning is a natural response: LoRA freezes the base model and trains small low-rank matrices inside attention projections \citep{hu2021lora}. LoRA-Whisper applies this idea to multilingual ASR and motivates adapter-based expansion without retraining the full model \citep{song2024lorawhisper}.
+
+For local deployment, the browser prototype follows the practical direction opened by whisper.cpp \citep{whispercpp2026}: compact quantized models can run without a cloud service, and model files can be cached locally. The repository's front-end uses Vite and Preact, initializes an ASR worker through Comlink, checks for browser-available Whisper WASM assets, and loads language-specific model files from a local \texttt{/models/} path.
+
+\subsection{Post-ASR Reconstruction}
+
+The reconstruction component is inspired by work that separates recognition from language-specific repair. \citet{diwan2021reduce} propose a reduce-and-reconstruct approach for low-resource phonetic languages, where ASR predicts a simplified representation and a downstream module reconstructs the full form. Shout does not train a reduced representation. Instead, it keeps Whisper's normal text output and applies a lightweight lexical repair layer after decoding. This choice is attractive for browser use because it is simple, interpretable, and fast, but it is also limited: whole-word vocabularies cannot cover the productive morphology that motivates the project in the first place.
+
+\section{Data and Artifacts}
+
+The project uses Common Voice data for Seri and Central Puebla Nahuatl. The poster reports 11 hours, 17 speakers, and 1,615 sentences for SEI; and 12 hours, 41 speakers, and 1,044 sentences for NCX. The available evaluation logs include 452 SEI test clips and 345 NCX test clips for the zero-shot baseline. Table~\ref{tab:data} summarizes the dataset information available in the repository and poster.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\begin{tabular}{lrrrr}
+\toprule
+Language & Code & Hours & Speakers & Sent.\\
+\midrule
+Seri & SEI & 11 & 17 & 1,615\\
+C. Puebla Nahuatl & NCX & 12 & 41 & 1,044\\
+\bottomrule
+\end{tabular}
+\caption{Common Voice data described in the project poster. The repository logs contain 452 SEI and 345 NCX held-out clips for zero-shot evaluation.}
+\label{tab:data}
+\end{table}
+
+The repository is organized around three implementation surfaces. The first is the browser application under \texttt{shout/}, which contains the UI, audio recording components, worker bridge, model-loading utilities, confidence utilities, and browser cache helpers. The second is the model experimentation directory \texttt{sei\_ncx\_asr\_model/}, which contains zero-shot evaluation, Whisper+LoRA training, reconstruction, morpheme-F1 evaluation, adapter artifacts, and metrics. The third is \texttt{test/}, which contains browser-trace CSVs and an ASR metrics script used to compare raw and reconstructed outputs.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{p{0.27\linewidth}p{0.61\linewidth}}
+\toprule
+Component & Repository evidence\\
+\midrule
+Browser ASR & Preact app, Comlink worker, WASM/model checks, local model loading, confidence output.\\
+LoRA training & Whisper-small fine-tuning script with LoRA rank 32, alpha 64, dropout 0.05, 10 epochs.\\
+Reconstruction & Python Levenshtein/BK-style lexical correction with max edit distance 2.\\
+Evaluation & WER, CER, token F1, boundary F1, latency, RTF, and reconstruction-rate logs.\\
+\bottomrule
+\end{tabular}
+\caption{Main project artifacts recovered during the repository scan.}
+\label{tab:artifacts}
+\end{table}
+
+\section{Methodology}
+
+\subsection{Browser-Oriented ASR Pipeline}
+
+Figure~\ref{fig:pipeline} gives the high-level pipeline. The front-end records or receives audio, routes samples to a worker, loads a local Whisper model, and returns a transcript with a confidence score. The worker design is important because ASR inference can be slow enough to block the main UI thread. In the current implementation, the worker checks for \texttt{/wasm/whisper.js}, dynamically imports it, fetches a quantized model such as \texttt{whisper-base-\{language\}-q5.bin}, initializes the context, and calls the WASM transcription entry point. The application then stores transcript, confidence, latency, and real-time factor in a shared signal state.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.91\linewidth}
+\small
+\centering
+Audio input $\rightarrow$ browser worker $\rightarrow$ local Whisper inference $\rightarrow$ token confidence $\rightarrow$ lexical reconstruction $\rightarrow$ corrected transcript
+\end{minipage}}
+\caption{Shout pipeline. The browser implementation covers local inference and confidence reporting; the most complete lexical reconstruction implementation is evaluated through the Python scripts and exported traces.}
+\label{fig:pipeline}
+\end{figure}
+
+The on-device goal constrains model choice. Whisper-small is used in the training scripts as a quality/size compromise, while the browser utilities expose tiny, base, and small whisper.cpp model sources and recommend smaller models for mobile or low-memory devices. This is a realistic design trade-off: under-supported languages need adaptation capacity, but browser deployments also need manageable download size, memory use, and latency.
+
+\subsection{Language Adaptation}
+
+The LoRA script fine-tunes \texttt{openai/whisper-small} for a single language. Since the target languages are not native Whisper language codes in the script, forced decoder language tokens are disabled and the model decodes freely. Audio is resampled to 16 kHz through Hugging Face Datasets, tokenized with the Whisper processor, and trained with a sequence-to-sequence trainer patched for PEFT/Whisper compatibility. The LoRA configuration targets the \texttt{q\_proj}, \texttt{k\_proj}, \texttt{v\_proj}, and \texttt{out\_proj} attention projections with rank 32, alpha 64, and dropout 0.05. This keeps the deployable language-specific artifact much smaller than a full model checkpoint.
+
+The experimental framing distinguishes four systems: zero-shot Whisper-small (B1), monolingual LoRA adaptation (B2), joint or multilingual adaptation where available (B3), and reconstruction after ASR (B4). The available repository metrics are not perfectly symmetrical across SEI and NCX, so the results section separates confirmed logs from poster-level interpretation.
+
+\subsection{Lexical Reconstruction}
+
+The reconstruction script builds a vocabulary from a Common Voice training TSV or, when no training TSV is provided, from reference strings. It then scans each predicted token and replaces out-of-vocabulary words with the closest vocabulary entry when the Levenshtein distance is at most $d_{\max}=2$. The poster describes a confidence threshold, with the best threshold around $0.6$--$0.7$, and gives the example \textit{amachotiyol} $\rightarrow$ \textit{amachotiyotl}. The Python B4 script in the repository uses edit-distance correction over prediction CSVs; the browser confidence utility separately computes confidence as the exponential of average token log probability.
+
+Formally, let $\hat{y}=(\hat{y}_1,\ldots,\hat{y}_n)$ be the ASR token sequence and $V_L$ the vocabulary for language $L$. For an eligible token, reconstruction chooses
+\begin{equation}
+v_i^\star = \arg\min_{v \in V_L} d_{\mathrm{lev}}(\hat{y}_i, v),
+\end{equation}
+and replaces $\hat{y}_i$ only if $d_{\mathrm{lev}}(\hat{y}_i,v_i^\star)\le d_{\max}$. The intended confidence-aware version applies this only when the token confidence is below a threshold $\tau$.
+
+\begin{figure}[t]
+\small
+\begin{enumerate}
+    \item Build a language vocabulary from training text.
+    \item Index vocabulary entries for approximate matching.
+    \item For each ASR token, check confidence or vocabulary status.
+    \item Query the nearest lexical neighbor under edit distance.
+    \item Replace only when the neighbor is within $d_{\max}$.
+\end{enumerate}
+\caption{Confidence-based lexical reconstruction procedure. The current Python evaluation implements the edit-distance repair loop and records before/after metrics.}
+\label{fig:algorithm}
+\end{figure}
+
+\section{Experimental Setup}
+
+\subsection{Metrics}
+
+The core metrics are WER and CER. WER is
+\begin{equation}
+\mathrm{WER} = \frac{S + D + I}{N},
+\end{equation}
+where $S$, $D$, and $I$ are substitutions, deletions, and insertions relative to $N$ reference words. CER applies the same idea to characters. Because the target languages can have long and morphologically rich words, the project also computes token F1 and boundary F1 as diagnostic proxies. Token F1 measures overlap between predicted and reference word tokens as multisets. Boundary F1 compares predicted and reference whitespace boundary positions after normalization. These proxy metrics are not substitutes for linguistic morpheme analysis, but they reveal whether reconstruction improves word inventory overlap and segmentation.
+
+\subsection{Baselines and Logs}
+
+The zero-shot script evaluates \texttt{openai/whisper-small} without fine-tuning on the SEI and NCX test sets. The LoRA training script produces adapter-only checkpoints and test metrics. Reconstruction is evaluated on the zero-shot prediction CSVs, with output CSVs and JSON summaries in \texttt{b4\_results/}. Separately, the \texttt{test/asr\_metrics\_out/} summaries compare raw ASR and final reconstructed text for 100-row browser traces per language, including latency and real-time factor.
+
+One limitation of the available logs is that they do not expose a complete rectangular table for every combination of language, model, and reconstruction setting. For example, the repository contains a SEI LoRA test metrics file and an NCX adapted-model language breakdown, but not matching adapter metrics for every condition named in the poster. The results below therefore report the numeric artifacts that are present and use the poster claims only for qualitative interpretation.
+
+\section{Results}
+
+\subsection{ASR Adaptation}
+
+Table~\ref{tab:asr} summarizes the main ASR metrics found in the repository. Zero-shot Whisper-small is not usable as a final system for either language: WER exceeds 1.0, meaning the number of word-level edits is greater than the number of reference words. This is common when a model produces insertions, deletions, and substitutions simultaneously on low-resource data. The SEI LoRA adapter reduces WER from 1.351 to 0.611 and CER from 0.901 to 0.173. The available NCX adapted evaluation is stronger, with WER 0.154 and CER 0.063 over 345 clips. These results align with the poster's claim that language-specific adaptation is the dominant source of improvement over zero-shot inference.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llrrr}
+\toprule
+Lang. & System & Clips & WER & CER\\
+\midrule
+SEI & Zero-shot Whisper & 452 & 1.351 & 0.901\\
+SEI & LoRA adapter & 452 & 0.611 & 0.173\\
+NCX & Zero-shot Whisper & 345 & 1.777 & 0.744\\
+NCX & Adapted model log & 345 & 0.154 & 0.063\\
+\bottomrule
+\end{tabular}
+\caption{ASR metrics recovered from the repository logs. Lower is better. The NCX adapted result comes from the available \texttt{language\_breakdown.csv} under the joint/adapted model directory.}
+\label{tab:asr}
+\end{table}
+
+The relative improvement is large. For SEI, LoRA reduces WER by 54.8\% relative to the zero-shot baseline and reduces CER by 80.8\%. For NCX, the available adapted evaluation reduces WER by 91.3\% and CER by 91.6\%. The gap between WER and CER is also informative. In the zero-shot setting, CER is lower than WER for both languages, implying that the model often produces partially related character sequences but fails at word-level lexical identity and segmentation.
+
+\subsection{Reconstruction on Zero-Shot Outputs}
+
+Table~\ref{tab:recon} reports the B4 reconstruction results on zero-shot prediction files. For SEI, WER improves only slightly, from 1.351 to 1.338, despite changing 1,841 of 2,850 predicted words. For NCX, WER improves from 1.777 to 1.678 after 1,477 corrections over 2,433 words. These changes show that edit-distance repair can help, especially when noisy outputs are close to a known lexical item, but also that many replacements do not translate into large WER gains.
+
+\begin{table}[t]
+\centering
+\scriptsize
+\begin{tabular}{lrrrr}
+\toprule
+Lang. & WER b. & WER a. & $\Delta$ & Changed\\
+\midrule
+SEI & 1.351 & 1.338 & -0.013 & 1,841/2,850\\
+NCX & 1.777 & 1.678 & -0.099 & 1,477/2,433\\
+\bottomrule
+\end{tabular}
+\caption{BK-tree/edit-distance reconstruction on zero-shot outputs with $d_{\max}=2$. Negative $\Delta$ means WER improves.}
+\label{tab:recon}
+\end{table}
+
+The token and boundary F1 results in Table~\ref{tab:f1} give a more nuanced view. Reconstruction improves token F1 from 0.010 to 0.028 for SEI and from 0.066 to 0.156 for NCX. Boundary F1 also improves, though modestly. NCX has 106 improved examples and only 2 regressions under the token-F1 criterion used by the script, while SEI has 45 improved examples and no large regressions. This suggests that the repair procedure is more effective for NCX in the available zero-shot files, possibly because the vocabulary better covers the evaluated forms or because the baseline errors are closer to valid vocabulary entries.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Lang. & Tok. F1 b. & Tok. F1 a. & Bound. b. & Bound. a.\\
+\midrule
+SEI & 0.010 & 0.028 & 0.140 & 0.146\\
+NCX & 0.066 & 0.156 & 0.196 & 0.224\\
+\bottomrule
+\end{tabular}
+\caption{Token and boundary F1 before (b.) and after (a.) reconstruction. Higher is better.}
+\label{tab:f1}
+\end{table}
+
+\subsection{Browser Trace Metrics}
+
+The browser-trace evaluation points in the opposite direction. On 100 SEI rows, raw ASR and final text have the same WER (1.171), while CER worsens slightly from 0.905 to 0.909. On 100 NCX rows, WER worsens from 0.929 to 0.934 and CER worsens from 0.505 to 0.518. Average latency is 7.57 seconds for SEI with real-time factor 1.66, and 15.80 seconds for NCX with real-time factor 3.49. These traces reinforce the central lesson: reconstruction can improve selected offline zero-shot outputs, but unguarded whole-word replacement can hurt when applied to a different output distribution or threshold.
+
+\section{Discussion}
+
+The first lesson is that language adaptation matters more than post-processing. Zero-shot Whisper-small has enough multilingual knowledge to produce non-random text, but not enough language-specific control for reliable SEI or NCX transcription. LoRA adaptation sharply reduces both WER and CER where metrics are available, and the adapter-only design is compatible with the project's deployment goal. The poster's comparison between monolingual and joint adapters is plausible in this context: with small and typologically distinct datasets, a shared adapter can introduce interference, while a monolingual adapter can specialize orthography, acoustics, and decoding behavior.
+
+The second lesson is that simple lexical reconstruction is brittle. Its best case is clear: if ASR predicts a near-miss that is within two edits of the intended word, a vocabulary lookup can repair the output cheaply and transparently. Its failure mode is equally clear. The closest dictionary word is not necessarily the intended word, and for morphologically productive languages a finite whole-word vocabulary is structurally incomplete. Replacing a nearly correct unseen form with a seen but wrong form may lower token F1 in one sentence, increase CER, or change meaning. This explains why reconstruction improves the zero-shot B4 summaries but degrades some browser traces.
+
+The third lesson concerns evaluation. WER alone is too coarse for this project. A high WER may hide character-level progress, while a lower WER can still reflect linguistically poor replacements. CER, token F1, boundary F1, qualitative examples, and eventually human review are all needed. The poster's threshold sweep, with useful thresholds around 0.6--0.7, should be treated as a tuning result rather than a universal constant. Thresholds should be selected on development data and reported separately from final test evaluation.
+
+\section{Limitations and Future Work}
+
+The current work has several limitations. The repository does not contain a complete final result matrix for every model/language/reconstruction condition, so some poster-level claims cannot be reproduced directly from the checked-in files. The browser app is also a prototype: worker-based inference, model loading, and confidence scoring are present, but the JavaScript reconstruction module is still a stub, and the most complete reconstruction evidence comes from Python scripts and exported CSV traces. Finally, the reconstruction vocabulary is a whole-word resource, which is a weak match for the morphology that motivates the task.
+
+Future work should move reconstruction below the word level. Byte-pair encodings or unigram subword vocabularies could reduce out-of-vocabulary failures while remaining lightweight. IPA or other phonetic outputs could help when orthographic conventions are inconsistent or when acoustically similar forms are confused. Rule-based finite-state transducers would allow linguistic constraints to guide reconstruction, closer in spirit to reduce-and-reconstruct methods. A human-in-the-loop interface should also be considered: rather than automatically replacing every candidate, the browser could surface confidence, alternatives, and edit history so speakers or language experts can accept, reject, or revise suggestions.
+
+\section{Ethics Statement}
+
+ASR for Indigenous and under-supported languages requires more than technical accuracy. Offline inference reduces privacy risk because audio can stay on the user's device, but data collection, model training, and deployment must still respect consent, licensing, community data governance, and the purposes for which speakers contributed recordings. Automatic correction should be auditable and reversible, especially when outputs may be used for documentation, education, or community archives. The system should support human expertise rather than replacing it, and future evaluation should include community-centered feedback.
+
+\section{Conclusion}
+
+Shout investigates offline browser-based ASR for under-supported languages through Whisper inference, LoRA adaptation, and post-ASR reconstruction. The available results show that zero-shot Whisper-small is insufficient for SEI and NCX, while language adaptation provides large gains. BK-tree lexical reconstruction can improve zero-shot outputs, especially for NCX, but it is not reliable enough as a general correction strategy and can degrade browser-trace metrics. The most promising path is therefore a hybrid one: keep the privacy and accessibility benefits of local browser inference, use language-specific adapters for core recognition quality, and replace whole-word automatic repair with more linguistically aware, thresholded, and user-controllable reconstruction.
+
+\section*{Acknowledgments}
+
+This project was supervised within IFT 6289 NLP Deep Learning, Winter 2026. The implementation builds on Whisper, whisper.cpp, LoRA, PEFT, Hugging Face tooling, and Common Voice. We thank the Seri and Nahuatl language communities whose recordings make this work possible.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\clearpage
+\onecolumn
+\appendix
+
+\section{Poster Annexe}
+
+The attached project poster is included as an annexe for reference. It summarizes the motivation, dataset, pipeline, threshold analysis, and high-level conclusions presented to the course instructor.
+
+\begin{center}
+\includegraphics[width=\textwidth,height=0.82\textheight,keepaspectratio]{assets/poster_presentation.pdf}
+\end{center}
+
+\section{Additional Browser Trace Summary}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Lang. & Output & Rows & WER & CER & Avg. RTF\\
+\midrule
+SEI & Raw ASR & 100 & 1.171 & 0.905 & 1.66\\
+SEI & Final text & 100 & 1.171 & 0.909 & 1.66\\
+NCX & Raw ASR & 100 & 0.929 & 0.505 & 3.49\\
+NCX & Final text & 100 & 0.934 & 0.518 & 3.49\\
+\bottomrule
+\end{tabular}
+\caption{Browser-trace metrics from \texttt{test/asr\_metrics\_out/summary.json}. These rows are separated from the main results because they evaluate exported traces rather than the full held-out Common Voice prediction files.}
+\end{table}
+
+\end{document}
