@@ -1,0 +1,8 @@
+Baseline ID,Language,Model,Dataset,Reconstruction,WER,CER,Latency,Memory
+B1,ncx,Whisper,Common Voice / Fallback,off,1.3512,0.9008,0.0,
+B1,sei,Whisper,Common Voice / Fallback,off,1.3512,0.9008,0.0,
+B2,sei,Whisper,Common Voice / Fallback,off,0.6108,0.1728,32.7,
+B2,ncx,Whisper,Common Voice / Fallback,off,,,,
+B3,ncx/sei,Whisper,Common Voice / Fallback,off,,,0.0,
+B4,ncx,Whisper,Common Voice / Fallback,on,,,0.0,
+B4,sei,Whisper,Common Voice / Fallback,on,,,0.0,

@@ -1,0 +1,7 @@
+{
+  "adapter": "/part/01/Tmp/soobenve/nlp-project/Shout/sei_ncx_asr_model/missing_training/ncx_seed7/adapter",
+  "language": "ncx",
+  "wer": 0.6114327062228654,
+  "cer": 0.14543630892678033,
+  "clips": 345
+}

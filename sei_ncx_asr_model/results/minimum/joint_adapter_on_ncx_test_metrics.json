@@ -1,0 +1,7 @@
+{
+  "adapter": "/part/01/Tmp/soobenve/min_experiments/joint_adapter/adapter",
+  "language": "ncx",
+  "wer": 0.6685962373371924,
+  "cer": 0.17315583112975289,
+  "clips": 345
+}
