@@ -125,17 +125,6 @@ python eval_morpheme_f1.py --lang ncx
 The training script expects Common Voice data in one of the locations listed
 in `find_existing_cv_data()`; pass `--data_dir` to override.
 
-### Current results
-
-| Language | WER (B1) | WER (B4) | Token F1 (B1 to B4) | Boundary F1 (B1 to B4) |
-|----------|----------|----------|--------------------|-----------------------|
-| sei      | 1.35     | 1.34     | 0.010 => 0.028      | 0.140 => 0.146         |
-| ncx      | 1.78     | 1.68     | 0.066 => 0.156      | 0.196 => 0.224         |
-
-B4 reconstruction uses a Levenshtein lookup against the training lexicon with
-a maximum edit distance of 2. No regressions were observed for `sei`; two
-regressions were observed for `ncx`.
-
 ## Browser frontend
 
 The frontend lives in `Shout/shout/` and is a Preact + Vite app. It loads a
