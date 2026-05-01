@@ -1,8 +1,4 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-// Use local icons or simplified replacements if phosphor-icons is not installed
-// Assuming phosphor-icons might be missing in the original shout, but better UI uses it.
-// I'll check package.json later if needed, but for now I'll use a simple SVG if I can't find the icon.
-// Actually, let's check if phosphor-icons is available.
 import { UploadSimple } from '@phosphor-icons/react';
 import { State, isBusy, isLoading } from '../stores/state.js';
 import { getModelUploadLimit } from '../libs/capabilities.js';
