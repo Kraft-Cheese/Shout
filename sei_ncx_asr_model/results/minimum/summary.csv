@@ -1,0 +1,7 @@
+slug,description,language,B2_wer,B2_cer,clips,tau0.00_wer,tau0.00_delta,tau0.30_wer,tau0.30_delta,tau0.50_wer,tau0.50_delta,tau0.70_wer,tau0.70_delta,tau1.00_wer,tau1.00_delta
+sei_adapter_on_sei,B2 diagonal (reference),sei,,,,,,,,,,,,,
+ncx_adapter_on_ncx,B2 diagonal,ncx,,,,,,,,,,,,,
+joint_adapter_on_sei,B3 on sei,sei,0.6326,0.1870,452,0.6326,0.0000,0.6289,-0.0037,0.6201,-0.0125,0.6149,-0.0177,0.6190,-0.0136
+joint_adapter_on_ncx,B3 on ncx,ncx,0.6686,0.1732,345,0.6686,0.0000,0.6635,-0.0051,0.6556,-0.0130,0.6476,-0.0210,0.6527,-0.0159
+sei_adapter_on_ncx,off-diagonal: sei→ncx,ncx,,,,,,,,,,,,,
+ncx_adapter_on_sei,off-diagonal: ncx→sei,sei,,,,,,,,,,,,,
