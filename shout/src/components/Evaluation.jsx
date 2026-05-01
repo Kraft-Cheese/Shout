@@ -51,6 +51,12 @@ export function Evaluation() {
 
     try {
       const csvData = await parseCsv(csvFile);
+
+      if (csvData.length === 0) {
+        State.error.value = 'The CSV/TSV file is empty or contains only headers. Please provide at least one data row.';
+        return;
+      }
+
       // Expected CSV headers: file_name, transcription (or text/sentence), language (optional)
       const fileNameKey = Object.keys(csvData[0]).find(k => k.includes('file') || k.includes('id') || k.includes('path'));
       const textKey = Object.keys(csvData[0]).find(k => k.includes('transcription') || k.includes('text') || k.includes('sentence') || k.includes('label'));

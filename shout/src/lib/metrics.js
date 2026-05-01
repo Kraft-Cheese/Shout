@@ -25,8 +25,8 @@ function normalise(text) {
  * Word Error Rate (WER)
  */
 export function calculateWER(reference, hypothesis) {
-  const refWords = reference.trim().split(/\s+/).filter(w => w.length > 0);
-  const hypWords = hypothesis.trim().split(/\s+/).filter(w => w.length > 0);
+  const refWords = normalise(reference).split(/\s+/).filter(w => w.length > 0);
+  const hypWords = normalise(hypothesis).split(/\s+/).filter(w => w.length > 0);
 
   if (refWords.length === 0) return hypWords.length === 0 ? 0 : Infinity;
 
@@ -38,8 +38,8 @@ export function calculateWER(reference, hypothesis) {
  * Character Error Rate (CER)
  */
 export function calculateCER(reference, hypothesis) {
-  const refChars = reference.trim().split('');
-  const hypChars = hypothesis.trim().split('');
+  const refChars = normalise(reference).split('');
+  const hypChars = normalise(hypothesis).split('');
 
   if (refChars.length === 0) return hypChars.length === 0 ? 0 : Infinity;
 

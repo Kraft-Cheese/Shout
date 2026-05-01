@@ -327,7 +327,7 @@ export async function transcribe(audio) {
 
 /**
  * Simplified transcription for batch evaluation.
- * Does not update global UI state except for errors.
+ * Does not update global UI state. Throws on error.
  */
 export async function transcribeBatch(audio, targetLang, referenceText = '') {
   if (!workerInitialized || !whisper) {
