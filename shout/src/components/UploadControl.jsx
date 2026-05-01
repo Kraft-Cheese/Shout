@@ -42,7 +42,7 @@ async function validateModelFile(file) {
   if (!SUPPORTED_MODEL_EXTS.includes(ext)) {
     return {
       ok: false,
-      reason: `Unsupported model file extension \"${ext || 'none'}\". Supported model files: .bin, .gguf, .ggml.`,
+      reason: `Unsupported model file extension "${ext || 'none'}". Supported model files: .bin, .gguf, .ggml.`,
     };
   }
 

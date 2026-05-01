@@ -33,6 +33,10 @@ export const State = {
   reconstructed: signal(false),
   showInterpunct: signal(false),
 
+  /** Comparison results if comparisonMode is on */
+  comparisonMode: signal(false),
+  comparisonResults: signal(null),
+
   /** Performance metrics */
   metrics: signal({
     inference: 0,
@@ -45,6 +49,17 @@ export const State = {
 
   /** Error message for UI display */
   error: signal(null),
+
+  /** Routing / Navigation */
+  view: signal('main'), // 'main' | 'evaluate'
+
+  /** Evaluation Progress */
+  evalProgress: signal({
+    current: 0,
+    total: 0,
+    status: 'idle', // 'idle' | 'running' | 'done' | 'error'
+    results: [],
+  }),
 };
 
 // Derived state (computed signals)

@@ -8,6 +8,8 @@ const LANGUAGES = [
   { code: 'fr',  name: 'French' },
   { code: 'sei', name: 'Seri' },
   { code: 'ncx', name: "Nxa'amxcín" },
+  { code: 'sei-joint', name: 'Seri (Joint)' },
+  { code: 'ncx-joint', name: "Nxa'amxcín (Joint)" },
 ];
 
 /**
@@ -25,6 +27,10 @@ export function LanguageSelect() {
     await loadModel(State.language.value);
   };
 
+  const handleComparisonChange = (e) => {
+    State.comparisonMode.value = e.target.checked;
+  };
+
   return (
     <div class="language-select language-select-nav">
       <div class="section-label">Language</div>
@@ -39,15 +45,26 @@ export function LanguageSelect() {
           </option>
         ))}
       </select>
-      <label class="quantized-toggle">
-        <input
-          type="checkbox"
-          checked={State.useQuantized.value}
-          onChange={handleQuantizedChange}
-          disabled={isLoading.value}
-        />
-        Quantized (Q5)
-      </label>
+      <div class="controls-row">
+        <label class="quantized-toggle">
+          <input
+            type="checkbox"
+            checked={State.useQuantized.value}
+            onChange={handleQuantizedChange}
+            disabled={isLoading.value}
+          />
+          Quantized (Q5)
+        </label>
+
+        <label class="comparison-toggle">
+          <input
+            type="checkbox"
+            checked={State.comparisonMode.value}
+            onChange={handleComparisonChange}
+          />
+          Comparison Mode
+        </label>
+      </div>
     </div>
   );
 }

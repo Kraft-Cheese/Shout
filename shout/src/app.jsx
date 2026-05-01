@@ -6,6 +6,7 @@ import { checkCapabilities } from './libs/capabilities.js';
 import { LanguageSelect } from './components/LanguageSelect';
 import { Recorder } from './components/Recorder';
 import { Output } from './components/Output';
+import { Evaluation } from './components/Evaluation';
 import { UploadControl } from './components/UploadControl.jsx';
 
 /**
@@ -21,9 +22,16 @@ export function App() {
       if (issues.length > 0) console.warn('[shout] capability warnings:', issues);
 
       const success = await initWorker();
-      if (success) loadModel(State.language.value);
+      if (success) {
+        // Auto-load default language model
+        loadModel(State.language.value);
+      }
     })();
   }, []);
+
+  const navigate = (view) => {
+    State.view.value = view;
+  };
 
   return (
     <main id="shout-app">
@@ -31,11 +39,27 @@ export function App() {
         <div class="toolbar-left">
           <h1>SHOUT</h1>
         </div>
+        <nav class="app-nav">
+          <button 
+            class={State.view.value === 'main' ? 'active' : ''} 
+            onClick={() => navigate('main')}
+          >
+            ASR
+          </button>
+          <button 
+            class={State.view.value === 'evaluate' ? 'active' : ''} 
+            onClick={() => navigate('evaluate')}
+          >
+            Evaluate
+          </button>
+        </nav>
       </header>
 
-      <div class="language-float">
-        <LanguageSelect />
-      </div>
+      {State.view.value === 'main' && (
+        <div class="language-float">
+          <LanguageSelect />
+        </div>
+      )}
 
       <div class="main-card">
         {/* Error Banner */}
@@ -46,11 +70,17 @@ export function App() {
           </div>
         )}
 
-        <Recorder />
-        <Output />
+        {State.view.value === 'main' ? (
+          <>
+            <Recorder />
+            <Output />
+          </>
+        ) : (
+          <Evaluation />
+        )}
       </div>
 
-      <UploadControl />
+      {State.view.value === 'main' && <UploadControl />}
 
     </main>
   );

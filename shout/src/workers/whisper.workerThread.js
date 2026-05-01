@@ -7,18 +7,18 @@ import * as Comlink from 'comlink';
  * Exposes load() and transcribe() via Comlink.
  *
  * WASM API reference: public/wasm/index.html
- *   - Module.FS_createDataFile()
- *   - Module.init(fname, lang)
- *   - Module.set_audio(ctx, buf)
- *   - Module.get_transcribed()     consumes and returns transcribed text
- *   - Module.get_confidence()      segment-level min-token-p, cube-rooted
- *   - Module.get_tokens()          [{text, p, t0, t1}] per-token data
- *   - Module.set_max_tokens(n)     max output tokens per segment
- *   - Module.set_vad_thold(f)      VAD speech probability threshold
+ * - Module.FS_createDataFile()
+ * - Module.init(fname, lang)
+ * - Module.set_audio(ctx, buf)
+ * - Module.get_transcribed()     consumes and returns transcribed text
+ * - Module.get_confidence()      segment-level min-token-p, cube-rooted
+ * - Module.get_tokens()          [{text, p, t0, t1}] per-token data
+ * - Module.set_max_tokens(n)     max output tokens per segment
+ * - Module.set_vad_thold(f)      VAD speech probability threshold
  */
 
 // Languages that benefit from higher max_tokens due to polysynthetic morphology
-const POLYSYNTHETIC_LANGS = new Set(['sei', 'ncx', 'nhn', 'cr', 'iku']);
+const POLYSYNTHETIC_LANGS = new Set(['sei', 'ncx', 'nhn', 'cr', 'iku', 'sei-joint', 'ncx-joint']);
 
 // Mobile detection to pick a smaller model
 const IS_MOBILE = /Mobi|Android/i.test(
@@ -38,7 +38,18 @@ function initFromBuffer(language, buffer) {
   console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
 
   console.log('[whisper] Calling Module.init...');
+  
+  // Ported from UI_improvement: Free existing context to prevent memory leaks
+  if (ctx && typeof self.Module.free === 'function') {
+    try {
+      self.Module.free(ctx);
+      console.log('[whisper] Freed previous context');
+    } catch (e) {
+      console.warn('[whisper] Module.free(ctx) failed:', e);
+    }
+  }
   ctx = null;
+  
   let initLanguageUsed = null;
   let initModelPathUsed = null;
   const initLanguages = getInitLanguageFallbacks(language);
@@ -92,7 +103,6 @@ function getInitLanguageFallbacks(language) {
   if (language !== 'en') queue.push('en');
   return [...new Set(queue)];
 }
-
 
 function fsUnlinkSafe(path) {
   if (typeof self.Module?.FS_unlink === 'function') {
@@ -150,35 +160,44 @@ async function headInfo(url) {
 
 function getModelUrlCandidates(modelSize, language, quantized) {
   const q = quantized ? '-q5' : '';
+  const actualLang = (language === 'sei-joint' || language === 'ncx-joint') ? 'joint' : language;
+  console.log('[whisper] getModelUrlCandidates modelSize=', modelSize, 'language=', language, 'quantized=', quantized, 'actualLang=', actualLang);
   const candidates = [
-    `/models/whisper-${modelSize}-${language}${q}.bin`,
-    `/models/whisper-${modelSize}.${language}${q}.bin`,
-    `/models/whisper-${modelSize}${q}.bin`,
-    // English base fallback — used when language-specific LoRA models haven't been built yet
-    `/models/whisper-base.en${q}.bin`,
-    `/models/whisper-base${q}.bin`,
+    `/models/whisper-${modelSize}-${actualLang}${q}.bin`,
+    `/models/whisper-${modelSize}.${actualLang}${q}.bin`,
   ];
 
+  if (language !== 'en') {
+    candidates.push(`/models/whisper-${modelSize}${q}.bin`);
+    // English-base fallbacks — the repo ships whisper-<size>.en-q5.bin
+    candidates.push(`/models/whisper-${modelSize}.en${q}.bin`);
+    candidates.push(`/models/whisper-${modelSize}-en${q}.bin`);
+  }
   return [...new Set(candidates)];
 }
 
 async function resolveModelUrl(modelSize, language, quantized) {
-  const candidates = getModelUrlCandidates(modelSize, language, quantized);
+  let candidates = getModelUrlCandidates(modelSize, language, quantized);
 
-  for (const url of candidates) {
-    const info = await headInfo(url);
-    console.log('[whisper] Model HEAD', url, 'status=', info.status, 'len=', info.length, 'type=', info.contentType || 'unknown');
+  const tryResolve = async (urls) => {
+    for (const url of urls) {
+      const info = await headInfo(url);
+      console.log('[whisper] Model HEAD', url, 'status=', info.status, 'len=', info.length, 'type=', info.contentType || 'unknown');
 
-    // Reject tiny/text responses (typically Vite HTML fallback) even with 200.
-    const isLikelyBinary =
-      info.ok &&
-      !info.contentType.includes('text/html') &&
-      (info.length === null || info.length > 1024 * 1024);
+      const isLikelyBinary =
+        info.ok &&
+        !info.contentType.includes('text/html') &&
+        (info.length === null || info.length > 1024 * 1024);
 
-    if (isLikelyBinary) {
-      return url;
+      if (isLikelyBinary) {
+        return url;
+      }
     }
-  }
+    return null;
+  };
+
+  let resolved = await tryResolve(candidates);
+  if (resolved) return resolved;
 
   throw new Error(
     `No model binary found. Tried: ${candidates.join(', ')}`
@@ -217,6 +236,7 @@ async function ensureWasmLoaded() {
       // Force pthread workers to load stream.js rather than this wrapper worker.
       mainScriptUrlOrBlob: streamScriptUrl,
       onRuntimeInitialized: () => {
+        if (wasmReady) return; // Already handled
         clearTimeout(watchdog);
         console.log('[whisper] onRuntimeInitialized fired WASM heap ready');
         wasmReady = true;
@@ -260,18 +280,19 @@ const api = {
 
   async load(language, quantized = false, onProgress = null) {
     console.log('[whisper] load() called, language=', language, 'quantized=', quantized);
+    const actualLang = (language === 'sei-joint' || language === 'ncx-joint') ? 'joint' : language;
     try {
       await ensureWasmLoaded();
       console.log('[whisper] WASM ready, proceeding to model fetch');
 
       // Fine-tuned LoRA models are whisper-small; generic languages fall back
       // to whisper-tiny (mobile) or whisper-base (desktop).
-      const FINE_TUNED_LANGS = new Set(['sei', 'ncx']);
-      const modelSize = FINE_TUNED_LANGS.has(language)
+      const FINE_TUNED_LANGS = new Set(['sei', 'ncx', 'sei-joint', 'ncx-joint', 'joint']);
+      const modelSize = FINE_TUNED_LANGS.has(actualLang)
         ? 'small'
         : IS_MOBILE ? 'tiny' : 'base';
       const modelUrl = await resolveModelUrl(modelSize, language, quantized);
-      console.log('[whisper] Model URL:', modelUrl, 'IS_MOBILE=', IS_MOBILE);
+      console.log('[whisper] Model URL resolved to:', modelUrl, 'IS_MOBILE=', IS_MOBILE);
 
       const MODEL_CACHE = 'shout-models-v1';
 
@@ -282,12 +303,12 @@ const api = {
           const cache = await caches.open(MODEL_CACHE);
           const cached = await cache.match(modelUrl);
           if (cached) {
-            console.log('[whisper] Model found in cache, loading...');
-            if (onProgress) onProgress({ received: 1, total: 1, ratio: 0.99, cached: true });
+            console.log('[whisper] Model found in cache, loading from buffer...');
+            if (onProgress) onProgress({ ratio: 0.99, cached: true });
             const ab = await cached.arrayBuffer();
             buffer = new Uint8Array(ab);
             console.log('[whisper] Model loaded from cache, bytes=', buffer.byteLength);
-            if (onProgress) onProgress({ received: buffer.byteLength, total: buffer.byteLength, ratio: 1.0, cached: true });
+            if (onProgress) onProgress({ ratio: 1.0, cached: true });
           }
         } catch (cacheErr) {
           console.warn('[whisper] Cache read failed, will fetch from network:', cacheErr.message);
@@ -295,7 +316,7 @@ const api = {
       }
 
       if (!buffer) {
-        console.log('[whisper] Fetching model from network...');
+        console.log('[whisper] Fetching model from network:', modelUrl);
         const response = await fetch(modelUrl);
         if (!response.ok) {
           throw new Error(`Model fetch failed for ${modelUrl}: HTTP ${response.status}`);
@@ -327,7 +348,7 @@ const api = {
             if (pct > lastReportedPct) {
               lastReportedPct = pct;
               console.log('[whisper] Download progress:', pct, '%');
-              onProgress({ received, total, ratio: received / total });
+              onProgress({ received, total, ratio: received / total, cached: false });
             }
           }
         }
@@ -339,7 +360,7 @@ const api = {
           );
         }
 
-        if (onProgress) onProgress({ received, total: received, ratio: 1.0 });
+        if (onProgress) onProgress({ received, total: received, ratio: 1.0, cached: false });
 
         buffer = new Uint8Array(received);
         let offset = 0;
@@ -368,12 +389,11 @@ const api = {
       initFromBuffer(language, buffer);
 
       isModelLoaded = true;
-      console.log('[whisper] Model initialized successfully, ctx=', ctx);
       console.log('[whisper] load() complete model ready');
     } catch (err) {
       console.error('[whisper] load() failed:', err);
       isModelLoaded = false;
-      throw new Error(`Failed to load Whisper: ${err.message}`);
+      throw err;
     }
   },
 
@@ -387,6 +407,7 @@ const api = {
       }
 
       initFromBuffer(language, buffer);
+      
       isModelLoaded = true;
       console.log('[whisper] loadFromBytes() complete model ready');
     } catch (err) {
@@ -400,10 +421,14 @@ const api = {
     return isModelLoaded;
   },
 
-  async transcribe(audio) {
-    console.log('[whisper] transcribe() called, audio samples=', audio.length);
+  async transcribe(audio, language = null) {
+    console.log('[whisper] transcribe() called, audio samples=', audio.length, 'language=', language);
     if (!ctx || !isModelLoaded) {
       throw new Error('Model not loaded. Please load the model first.');
+    }
+
+    if (language) {
+      // Logic for re-initializing language mid-session omitted as per original file
     }
 
     self.Module.set_audio(ctx, audio);

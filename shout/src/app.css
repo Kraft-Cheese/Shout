@@ -58,6 +58,34 @@
   flex-wrap: wrap;
 }
 
+.app-nav {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.app-nav button {
+  background: none;
+  border: none;
+  padding: 0.5rem 1rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--her-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: var(--transition);
+}
+
+.app-nav button:hover {
+  color: var(--her-coral);
+}
+
+.app-nav button.active {
+  color: var(--her-coral);
+  border-bottom-color: var(--her-coral);
+}
+
 .language-float {
   position: fixed;
   left: 1.25rem;
@@ -515,6 +543,164 @@
   padding: 0.25rem 0.5rem;
   background: var(--her-beige);
   border-radius: 8px;
+}
+
+/* Controls row for checkboxes */
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.comparison-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--her-text-muted);
+  cursor: pointer;
+}
+
+.comparison-toggle input {
+  cursor: pointer;
+}
+
+/* Comparison results */
+.comparison-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.comparison-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comparison-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--her-slate);
+  text-transform: uppercase;
+}
+
+/* Evaluation Component */
+.evaluation-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.file-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1.5px dashed var(--her-sand);
+}
+
+.file-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.file-input-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--her-slate);
+}
+
+.file-input-group input[type="file"] {
+  font-size: 0.85rem;
+}
+
+.eval-progress-container {
+  padding: 1rem;
+  background: var(--her-sand-light, #f8f8f8);
+  border-radius: 8px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.eval-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-primary {
+  background: var(--her-coral);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 24px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--her-coral-dark);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.results-preview {
+  margin-top: 1rem;
+}
+
+.results-table-container {
+  overflow-x: auto;
+  max-height: 300px;
+  border: 1px solid var(--her-sand);
+  border-radius: 4px;
+}
+
+.results-table-container table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.results-table-container th,
+.results-table-container td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--her-sand);
+}
+
+.results-table-container th {
+  background: var(--her-cream);
+  position: sticky;
+  top: 0;
+}
+
+.btn-secondary {
+  background: white;
+  color: var(--her-text);
+  border: 1.5px solid var(--her-sand);
+  padding: 0.5rem 1rem;
+  border-radius: 24px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-secondary:hover {
+  border-color: var(--her-coral);
 }
 
 /* Responsive */

@@ -180,7 +180,7 @@ export function reconstruct(text, vocab, langKey) {
  * @param {string[]} vocab
  * @param {string} langKey
  * @param {number} pThreshold - Tokens with p below this are candidates
- * @returns {{ text: string, changed: number }}
+ * @returns {{ text: string, tokens: Array<{text: string, p: number}>, changed: number }}
  */
 export function reconstructTokens(tokens, vocab, langKey, pThreshold) {
   // If no BK-tree for this language, build and cache it
@@ -192,23 +192,21 @@ export function reconstructTokens(tokens, vocab, langKey, pThreshold) {
   const tree = treeCache[langKey];
 
   let changed = 0;
-
-  // For each token, if its confidence p is below the threshold, attempt to correct it using the BK-tree
-  const parts = tokens.map(({ text, p }) => {
-    if (p >= pThreshold) return text;
-    // Normalize the token text for matching (lowercase, strip punctuation)
+  const reconstructedTokens = tokens.map((token) => {
+    const { text, p } = token;
+    if (p >= pThreshold) return { ...token };
     const word = text.trim().replace(/[^\w']+/g, '');
-    if (!word) return text;
+    if (!word) return { ...token };
     // Search for the closest match in the BK-tree
     const match = tree.search(word.toLowerCase(), MAX_DIST);
     // If a match is found and it's different from the original word, replace it
     if (match && match !== word.toLowerCase()) {
       changed++;
-      return text.replace(word, match);
+      return { ...token, text: text.replace(word, match), reconstructed: true };
     }
-    return text;
+    return { ...token, reconstructed: false };
   });
 
-  // Return the reconstructed text and the count of how many tokens were changed
-  return { text: parts.join(''), changed };
+  const text = reconstructedTokens.map((t) => t.text).join('');
+  return { text, tokens: reconstructedTokens, changed };
 }
