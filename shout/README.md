@@ -38,7 +38,7 @@ Put model files in:
 
 - shout/public/models/
 
-The app resolves model URLs using these patterns (in order):
+The app resolves model URLs using these patterns:
 
 1. /models/whisper-{size}-{language}{q}.bin
 2. /models/whisper-{size}.{language}{q}.bin
@@ -51,7 +51,7 @@ Important:
 - If a model path is wrong, dev server may return HTML instead of a model!!!!
 - The worker guards against this by rejecting tiny/HTML responses, however! This may lead to an error if the model is less than 1024 (unlikely but just in case)
 
-## 4) TODO: Seri and NXC LoRA adapters
+<!-- ## 4) TODO: Seri and NXC LoRA adapters
 
 LoRA adapter artifacts already exist in this repository:
 
@@ -73,4 +73,4 @@ Need to add language-to-model routing:
 And add evaluation:
    - Track WER/CER and morpheme-level quality
    - Compare baseline whisper.cpp vs adapter-backed output
-   - Show this somewhere...
+   - Show this somewhere... -->

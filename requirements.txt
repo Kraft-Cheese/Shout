@@ -1,0 +1,23 @@
+# Core ML stack
+torch>=2.1
+transformers>=4.40
+peft>=0.18
+datasets>=2.18
+accelerate>=0.30
+safetensors>=0.4
+
+# Evaluation
+evaluate>=0.4
+jiwer>=3.0
+
+# Audio + data
+librosa>=0.10
+soundfile>=0.12
+numpy>=1.24
+pandas>=2.0
+
+# Data download (scripts/getData.py)
+requests>=2.31
+
+# Experiment tracking (optional, used by whisper_lora_train.py)
+wandb>=0.17
