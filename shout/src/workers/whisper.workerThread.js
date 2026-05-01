@@ -7,14 +7,14 @@ import * as Comlink from 'comlink';
  * Exposes load() and transcribe() via Comlink.
  *
  * WASM API reference: public/wasm/index.html
- *   - Module.FS_createDataFile()
- *   - Module.init(fname, lang)
- *   - Module.set_audio(ctx, buf)
- *   - Module.get_transcribed()     consumes and returns transcribed text
- *   - Module.get_confidence()      segment-level min-token-p, cube-rooted
- *   - Module.get_tokens()          [{text, p, t0, t1}] per-token data
- *   - Module.set_max_tokens(n)     max output tokens per segment
- *   - Module.set_vad_thold(f)      VAD speech probability threshold
+ * - Module.FS_createDataFile()
+ * - Module.init(fname, lang)
+ * - Module.set_audio(ctx, buf)
+ * - Module.get_transcribed()     consumes and returns transcribed text
+ * - Module.get_confidence()      segment-level min-token-p, cube-rooted
+ * - Module.get_tokens()          [{text, p, t0, t1}] per-token data
+ * - Module.set_max_tokens(n)     max output tokens per segment
+ * - Module.set_vad_thold(f)      VAD speech probability threshold
  */
 
 // Languages that benefit from higher max_tokens due to polysynthetic morphology
@@ -29,15 +29,79 @@ let ctx = null;
 let isModelLoaded = false;
 let wasmReady = false;
 
+function initFromBuffer(language, buffer) {
+  console.log('[whisper] Writing model to WASM FS...');
+  try { fsUnlinkSafe('whisper.bin'); } catch (_) {}
+  fsCreateDataFileSafe('/', 'whisper.bin', buffer, true, true);
+
+  const modelFsSize = fsStatSizeSafe('/whisper.bin');
+  console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
+
+  console.log('[whisper] Calling Module.init...');
+  
+  // Ported from UI_improvement: Free existing context to prevent memory leaks
+  if (ctx && typeof self.Module.free === 'function') {
+    try {
+      self.Module.free(ctx);
+      console.log('[whisper] Freed previous context');
+    } catch (e) {
+      console.warn('[whisper] Module.free(ctx) failed:', e);
+    }
+  }
+  ctx = null;
+  
+  let initLanguageUsed = null;
+  let initModelPathUsed = null;
+  const initLanguages = getInitLanguageFallbacks(language);
+  const initModelPaths = ['whisper.bin', '/whisper.bin'];
+
+  for (const initPath of initModelPaths) {
+    for (const initLang of initLanguages) {
+      const candidateCtx = self.Module.init(initPath, initLang);
+      console.log('[whisper] Module.init attempt path=', initPath, 'lang=', initLang, 'ctx=', candidateCtx);
+      if (candidateCtx) {
+        ctx = candidateCtx;
+        initLanguageUsed = initLang;
+        initModelPathUsed = initPath;
+        break;
+      }
+    }
+    if (ctx) break;
+  }
+
+  if (!ctx) {
+    throw new Error(
+      `Module.init returned null for all attempts: paths=[${initModelPaths.join(', ')}], languages=[${initLanguages.join(', ')}]`
+    );
+  }
+
+  if (initModelPathUsed !== 'whisper.bin') {
+    console.warn(
+      '[whisper] Relative model path failed at init; using fallback path',
+      initModelPathUsed
+    );
+  }
+
+  if (initLanguageUsed !== language) {
+    console.warn(
+      '[whisper] Requested language',
+      language,
+      'failed at init; using fallback',
+      initLanguageUsed
+    );
+  }
+
+  if (POLYSYNTHETIC_LANGS.has(language)) {
+    console.log('[whisper] Polysynthetic language, setting max_tokens=128');
+    self.Module.set_max_tokens(128);
+  }
+}
+
 function getInitLanguageFallbacks(language) {
   const queue = [language];
   if (language !== 'auto') queue.push('auto');
   if (language !== 'en') queue.push('en');
   return [...new Set(queue)];
-}
-
-function getInitModelPathFallbacks() {
-  return ['whisper.bin', '/whisper.bin'];
 }
 
 function fsUnlinkSafe(path) {
@@ -133,7 +197,7 @@ async function resolveModelUrl(modelSize, language, quantized) {
   if (resolved) return resolved;
 
   throw new Error(
-    `No valid model binary found for size=${modelSize}, language=${language}, quantized=${quantized}. Tried: ${candidates.join(', ')}`
+    `No model binary found. Tried: ${candidates.join(', ')}`
   );
 }
 
@@ -319,65 +383,10 @@ const api = {
         }
       }
 
-      console.log('[whisper] Writing model to WASM FS...');
-      try { fsUnlinkSafe('/whisper.bin'); } catch (_) {}
-      fsCreateDataFileSafe('/', 'whisper.bin', buffer, true, true);
-
-      const modelFsSize = fsStatSizeSafe('/whisper.bin');
-      console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
-
-      console.log('[whisper] Calling Module.init...');
-      if (ctx) {
-        console.log('[whisper] Existing context found, attempt to free/re-init is implied by Module.init');
-        // In some whisper.cpp WASM builds, there is a Module.free(ctx) or similar.
-        // If it exists, let's use it to avoid memory leaks or re-init hangs.
-        if (typeof self.Module.free === 'function') {
-          try {
-            self.Module.free(ctx);
-            console.log('[whisper] Freed previous context');
-          } catch (e) {
-            console.warn('[whisper] Module.free(ctx) failed:', e);
-          }
-        }
-      }
-      ctx = null;
-      let initLanguageUsed = null;
-      let initModelPathUsed = null;
-      const initLanguages = getInitLanguageFallbacks(language);
-      const initModelPaths = getInitModelPathFallbacks();
-
-      for (const initPath of initModelPaths) {
-        for (const initLang of initLanguages) {
-          try {
-            console.log('[whisper] Attempting Module.init path=', initPath, 'lang=', initLang);
-            const candidateCtx = self.Module.init(initPath, initLang);
-            console.log('[whisper] Module.init result ctx=', candidateCtx);
-            if (candidateCtx) {
-              ctx = candidateCtx;
-              initLanguageUsed = initLang;
-              initModelPathUsed = initPath;
-              break;
-            }
-          } catch (initErr) {
-            console.error('[whisper] Module.init exception:', initErr);
-          }
-        }
-        if (ctx) break;
-      }
-
-      if (!ctx) {
-        throw new Error(
-          `Module.init returned null for all attempts: paths=[${initModelPaths.join(', ')}], languages=[${initLanguages.join(', ')}]`
-        );
-      }
-
-      if (POLYSYNTHETIC_LANGS.has(language)) {
-        console.log('[whisper] Polysynthetic language, setting max_tokens=128');
-        self.Module.set_max_tokens(128);
-      }
+      initFromBuffer(language, buffer);
 
       isModelLoaded = true;
-      console.log('[whisper] load() complete model ready, ctx=', ctx);
+      console.log('[whisper] load() complete model ready');
     } catch (err) {
       console.error('[whisper] load() failed:', err);
       isModelLoaded = false;
@@ -385,55 +394,23 @@ const api = {
     }
   },
 
-  async loadFromBytes(language, quantized = false, bytes) {
-    console.log('[whisper] loadFromBytes() called, language=', language, 'quantized=', quantized, 'bytes=', bytes.byteLength);
+  async loadFromBytes(language, _quantized = false, bytes) {
+    console.log('[whisper] loadFromBytes() called, language=', language, 'bytes=', bytes?.byteLength ?? 0);
     try {
       await ensureWasmLoaded();
-      console.log('[whisper] WASM ready, proceeding to write bytes to FS');
-
-      console.log('[whisper] Writing provided bytes to WASM FS...');
-      try { fsUnlinkSafe('/whisper.bin'); } catch (_) {}
-      fsCreateDataFileSafe('/', 'whisper.bin', bytes, true, true);
-
-      const modelFsSize = fsStatSizeSafe('/whisper.bin');
-      console.log('[whisper] Model in FS size=', modelFsSize ?? 'unknown');
-
-      console.log('[whisper] Calling Module.init...');
-      if (ctx && typeof self.Module.free === 'function') {
-        try { self.Module.free(ctx); } catch (e) {}
-      }
-      ctx = null;
-
-      const initLanguages = getInitLanguageFallbacks(language);
-      const initModelPaths = getInitModelPathFallbacks();
-
-      for (const initPath of initModelPaths) {
-        for (const initLang of initLanguages) {
-          try {
-            const candidateCtx = self.Module.init(initPath, initLang);
-            if (candidateCtx) {
-              ctx = candidateCtx;
-              break;
-            }
-          } catch (initErr) {}
-        }
-        if (ctx) break;
+      const buffer = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      if (buffer.byteLength < 1024 * 1024) {
+        throw new Error(`Uploaded model is too small (${buffer.byteLength} bytes).`);
       }
 
-      if (!ctx) {
-        throw new Error('Module.init failed to initialize model from bytes');
-      }
-
-      if (POLYSYNTHETIC_LANGS.has(language)) {
-        self.Module.set_max_tokens(128);
-      }
-
+      initFromBuffer(language, buffer);
+      
       isModelLoaded = true;
-      console.log('[whisper] loadFromBytes() complete');
+      console.log('[whisper] loadFromBytes() complete model ready');
     } catch (err) {
       console.error('[whisper] loadFromBytes() failed:', err);
       isModelLoaded = false;
-      throw err;
+      throw new Error(`Failed to load uploaded model: ${err.message}`);
     }
   },
 
@@ -448,16 +425,7 @@ const api = {
     }
 
     if (language) {
-      // Re-initialize for a different language if needed.
-      // NOTE: This might be slow if it involves heavy re-init, but let's see.
-      // Usually whisper.cpp's init is what sets the language.
-      // If the model is already loaded in FS, we just call init again with different lang?
-      // But Module.init in this WASM might expect to be called once.
-      // Let's try to just use set_audio and see if it respects the initial language.
-      // If we want to change language mid-session, we might need a way to tell the WASM.
-      // In this specific WASM implementation, language is passed to init().
-      // If we need to change language, we might need to re-init.
-      // For now, let's assume we use the language it was loaded with.
+      // Logic for re-initializing language mid-session omitted as per original file
     }
 
     self.Module.set_audio(ctx, audio);

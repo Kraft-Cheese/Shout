@@ -1,0 +1,7 @@
+{
+  "adapter": "/part/01/Tmp/soobenve/nlp-project/Shout/sei_ncx_asr_model/missing_training/joint_upsampled/adapter",
+  "language": "ncx",
+  "wer": 0.6816208393632417,
+  "cer": 0.17051153460381144,
+  "clips": 345
+}

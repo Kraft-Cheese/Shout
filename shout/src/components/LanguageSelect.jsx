@@ -1,4 +1,4 @@
-import { State, isReady, isLoading } from '../stores/state.js';
+import { State, isLoading } from '../stores/state.js';
 import { loadModel } from '../workers/worker.js';
 
 

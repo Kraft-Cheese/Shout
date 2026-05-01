@@ -1,8 +1,9 @@
 import { State, isLoading } from '../stores/state.js';
 import { buildInterpunctParts } from '../libs/morpheme.js';
+import { DotIcon } from '@phosphor-icons/react';
 import MorphemeToggle from './MorphemeToggle.jsx';
 
-// p > 0.7 → high, p > 0.4 → medium, p ≤ 0.4 → low
+// p > 0.7 == high, p > 0.4 == medium, p ≤ 0.4 == low
 const confidenceLevel = (p) => p > 0.7 ? 'high' : p > 0.4 ? 'medium' : 'low';
 
 /**
@@ -24,18 +25,18 @@ export function Output() {
     return (
       <div class={`transcription-box ${!localHasTranscript ? 'empty' : ''}`}>
         {!localHasTranscript
-          ? 'No result available.'
+          ? 'Record or upload audio to begin.'
           : localHasTokens
           ? (showInterpunct ? buildInterpunctParts(resTokens) : resTokens).map((item, i) =>
               item.kind === 'separator' ? (
                 <span key={item.key ?? i} class={`interpunct-dot ${item.className || ''}`}>
-                  ·
+                  <DotIcon size={20} weight="regular" aria-hidden="true" />
                 </span>
               ) : (
                 <span
                   key={item.key ?? i}
                   class={item.className ?? `token confidence-${confidenceLevel(item.p)} ${item.reconstructed ? 'reconstructed' : ''}`}
-                  title={item.title ?? `${item.reconstructed ? '[Reconstructed] ' : ''}p=${(item.p * 100).toFixed(1)}%`}
+                  title={item.title ?? `${item.reconstructed ? '[Reconstructed] ' : ''}p=${(item.p * 100).toFixed(1)}%  t0=${item.t0 * 10}ms`}
                 >
                   {item.text}
                 </span>
@@ -136,7 +137,7 @@ export function Output() {
           )}
 
           <div class="meta-row" style={{ marginTop: '0.5rem', borderTop: '1px solid var(--her-sand)', paddingTop: '0.75rem' }}>
-             <span class="metric">
+              <span class="metric">
                 {State.metrics.value.latency.toFixed(0)} ms
               </span>
               <span class="metric">

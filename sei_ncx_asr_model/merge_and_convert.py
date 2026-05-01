@@ -24,17 +24,19 @@ CONVERT_SCRIPT   = WHISPER_CPP_DIR / "models" / "convert-h5-to-ggml.py"
 QUANTIZE_BIN     = WHISPER_CPP_DIR / "build-native" / "bin" / "whisper-quantize"
 PUBLIC_MODELS_DIR = SCRIPT_DIR.parent / "shout" / "public" / "models"
 
+# Add adapter for new languages
 ADAPTERS = {
     "sei": SCRIPT_DIR / "sei_lora_adapter",
     "ncx": SCRIPT_DIR / "ncx_lora_adapter",
 }
 
-QUANT_TYPE = "q5_0"   # matches the -q5 suffix used in the web app
+QUANT_TYPE = "q5_0"
 
 # mel_filters.npz is a static 200 KB file bundled with openai-whisper.
 # Cache a local copy here so the script runs fully offline after first use.
 MEL_FILTERS_CACHE = SCRIPT_DIR / "assets" / "mel_filters.npz"
 
+# check for required dependencies and files
 def check_deps():
     missing = []
     for pkg in ("transformers", "peft", "safetensors", "torch", "numpy"):
@@ -56,6 +58,7 @@ def check_deps():
 
     PUBLIC_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
+# mel is a fixed filterbank based on the sample rate and FFT size, so we can generate it once and reuse it for all conversions
 def ensure_mel_filters() -> Path:
     """
     Return a path to mel_filters.npz, generating and caching it if needed.
@@ -65,9 +68,12 @@ def ensure_mel_filters() -> Path:
       2. openai-whisper package assets (copy to cache)
       3. Compute from librosa (compute and cache)
     """
+
+    # Check local cache first (should be fully offline after first run)
     if MEL_FILTERS_CACHE.exists():
         return MEL_FILTERS_CACHE
 
+    # check if exists
     MEL_FILTERS_CACHE.parent.mkdir(parents=True, exist_ok=True)
 
     # Try openai-whisper package first
@@ -87,6 +93,8 @@ def ensure_mel_filters() -> Path:
 
     import librosa
     import numpy as np
+
+    # The mel filterbank is determined by the sample rate (16 kHz) and FFT size (400 for 25ms windows with 16000 Hz)
     print("[mel_filters] Computing mel filterbanks with librosa (16kHz, n_fft=400)...")
     filters_80  = librosa.filters.mel(sr=16000, n_fft=400, n_mels=80)
     filters_128 = librosa.filters.mel(sr=16000, n_fft=400, n_mels=128)
@@ -94,7 +102,7 @@ def ensure_mel_filters() -> Path:
     print(f"[mel_filters] Saved to {MEL_FILTERS_CACHE} (will be reused offline)")
     return MEL_FILTERS_CACHE
 
-
+# expects the same mel_filters.npz structure as openai-whisper, which is what convert-h5-to-ggml.py needs
 def find_whisper_repo_root() -> Path:
     """
     The convert script expects <root>/whisper/assets/mel_filters.npz.
@@ -154,6 +162,7 @@ def merge_lora(language: str, adapter_dir: Path, out_dir: Path, base_model_path:
 
     print(f"[{language}] Merge done.")
 
+# Convert the merged model to GGML format
 def convert_to_ggml(language: str, merged_dir: Path, out_dir: Path, whisper_root: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     fp16_bin = out_dir / "ggml-model.bin"
@@ -180,8 +189,9 @@ def convert_to_ggml(language: str, merged_dir: Path, out_dir: Path, whisper_root
     print(f"[{language}] GGML F16 written: {fp16_bin} ({size_mb:.0f} MB)")
     return fp16_bin
 
+# Quantize the GGML model to the specified quantization type
 def quantize(language: str, fp16_bin: Path, out_path: Path):
-    print(f"\n[{language}] Quantizing to {QUANT_TYPE} → {out_path.name} ...")
+    print(f"\n[{language}] Quantizing to {QUANT_TYPE} to {out_path.name} ...")
     cmd = [str(QUANTIZE_BIN), str(fp16_bin), str(out_path), QUANT_TYPE]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -191,6 +201,7 @@ def quantize(language: str, fp16_bin: Path, out_path: Path):
     size_mb = out_path.stat().st_size / 1024 / 1024
     print(f"[{language}] Quantized model written: {out_path} ({size_mb:.0f} MB)")
 
+# Install the generated models to the public/models/ directory for use in the browser app
 def install(language: str, fp16_bin: Path, quant_bin: Path, skip_fp16: bool):
     fp16_dest  = PUBLIC_MODELS_DIR / f"whisper-small-{language}.bin"
     quant_dest = PUBLIC_MODELS_DIR / f"whisper-small-{language}-q5.bin"

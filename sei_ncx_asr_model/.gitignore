@@ -1,0 +1,28 @@
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Python cache
+__pycache__/
+*.pyc
+
+logs/
+missing_training/
+missing_evaluations/evals/
+missing_evaluations/tau_sweeps/
+missing_evaluations/b4_compat/
+missing_evaluations/morpheme_f1/
+__pycache__/
+*.pyc
+.venv/
+
+logs/
+missing_training/
+missing_evaluations/evals/
+missing_evaluations/tau_sweeps/
+missing_evaluations/b4_compat/
+missing_evaluations/morpheme_f1/
+__pycache__/
+*.pyc
+.venv/

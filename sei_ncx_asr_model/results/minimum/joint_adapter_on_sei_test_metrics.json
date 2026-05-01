@@ -1,0 +1,7 @@
+{
+  "adapter": "/part/01/Tmp/soobenve/min_experiments/joint_adapter/adapter",
+  "language": "sei",
+  "wer": 0.6325855093784479,
+  "cer": 0.18704111600587373,
+  "clips": 452
+}

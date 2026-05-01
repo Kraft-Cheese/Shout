@@ -1,6 +1,6 @@
 import { useEffect } from 'preact/hooks';
 import './app.css';
-import { State, isError } from './stores/state.js';
+import { State } from './stores/state.js';
 import { initWorker, loadModel } from './workers/worker.js';
 import { checkCapabilities } from './libs/capabilities.js';
 import { LanguageSelect } from './components/LanguageSelect';

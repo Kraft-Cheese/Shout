@@ -144,12 +144,20 @@ export function reconstruct(text, vocab, langKey) {
   if (!treeCache[langKey]) {
     treeCache[langKey] = buildTree(vocab);
   }
+  // Get the BK-tree for this language from the cache
   const tree = treeCache[langKey];
 
   let changed = 0;
+
+  // Replace each word in the input text with the closest match in the BK-tree if within MAX_DIST
   const corrected = text.replace(/[\w']+/g, (word) => {
+    // Normalize the word for matching (lowercase, strip punctuation)
     const lower = word.toLowerCase();
+
+    // Search for the closest match in the BK-tree
     const match = tree.search(lower, MAX_DIST);
+
+    // If a match is found and it's different from the original word, replace it
     if (match && match !== lower) {
       changed++;
       // Preserve original capitalisation if the input word was capitalised
@@ -160,6 +168,7 @@ export function reconstruct(text, vocab, langKey) {
     return word;
   });
 
+  // Return the corrected text and the count of how many words were changed
   return { text: corrected, changed };
 }
 
@@ -174,9 +183,12 @@ export function reconstruct(text, vocab, langKey) {
  * @returns {{ text: string, tokens: Array<{text: string, p: number}>, changed: number }}
  */
 export function reconstructTokens(tokens, vocab, langKey, pThreshold) {
+  // If no BK-tree for this language, build and cache it
   if (!treeCache[langKey]) {
     treeCache[langKey] = buildTree(vocab);
   }
+
+  // Get the BK-tree for this language from the cache
   const tree = treeCache[langKey];
 
   let changed = 0;
@@ -185,7 +197,9 @@ export function reconstructTokens(tokens, vocab, langKey, pThreshold) {
     if (p >= pThreshold) return { ...token };
     const word = text.trim().replace(/[^\w']+/g, '');
     if (!word) return { ...token };
+    // Search for the closest match in the BK-tree
     const match = tree.search(word.toLowerCase(), MAX_DIST);
+    // If a match is found and it's different from the original word, replace it
     if (match && match !== word.toLowerCase()) {
       changed++;
       return { ...token, text: text.replace(word, match), reconstructed: true };
