@@ -5,6 +5,8 @@
 
 const MIN_STORAGE_MB = 100;
 
+const MB = 1024 * 1024;
+
 /**
  * Check browser capabilities and return any issues found.
  * @returns {Promise<{ supported: boolean, issues: string[], recommendations: string[] }>}
@@ -59,4 +61,35 @@ function getRecommendations(issues) {
   }
 
   return recommendations;
+}
+
+/**
+ * Return a conservative model upload limit from storage and device memory.
+ * @returns {Promise<{ maxBytes: number, availableBytes: number, deviceMemoryGB: number | null }>}
+ */
+export async function getModelUploadLimit() {
+  let availableBytes = 0;
+  if (navigator.storage?.estimate) {
+    const { quota = 0, usage = 0 } = await navigator.storage.estimate();
+    availableBytes = Math.max(0, quota - usage);
+  }
+
+  const deviceMemoryGB = Number.isFinite(navigator.deviceMemory)
+    ? navigator.deviceMemory
+    : null;
+
+  // Keep at least half of available storage free for browser/runtime overhead.
+  const storageCap = availableBytes > 0 ? Math.floor(availableBytes * 0.5) : 180 * MB;
+  // Use ~25% of device memory budget for model bytes when available.
+  const memoryCap = deviceMemoryGB
+    ? Math.floor(deviceMemoryGB * 1024 * MB * 0.25)
+    : 220 * MB;
+
+  const maxBytes = Math.max(64 * MB, Math.min(storageCap, memoryCap));
+
+  return {
+    maxBytes,
+    availableBytes,
+    deviceMemoryGB,
+  };
 }
