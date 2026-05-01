@@ -169,6 +169,9 @@ function getModelUrlCandidates(modelSize, language, quantized) {
 
   if (language !== 'en') {
     candidates.push(`/models/whisper-${modelSize}${q}.bin`);
+    // English-base fallbacks — the repo ships whisper-<size>.en-q5.bin
+    candidates.push(`/models/whisper-${modelSize}.en${q}.bin`);
+    candidates.push(`/models/whisper-${modelSize}-en${q}.bin`);
   }
   return [...new Set(candidates)];
 }
