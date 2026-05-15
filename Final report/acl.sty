@@ -1,0 +1,69 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{acl}[2026/04/29 lightweight ACL-style course report formatting]
+
+\DeclareOption*{}
+\ProcessOptions\relax
+
+\RequirePackage[letterpaper,top=0.75in,bottom=1.0in,left=0.75in,right=0.75in,columnsep=0.25in]{geometry}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{times}
+\RequirePackage{latexsym}
+\RequirePackage{microtype}
+\RequirePackage{xcolor}
+\RequirePackage{url}
+\RequirePackage{natbib}
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{graphicx}
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+\RequirePackage{enumitem}
+\RequirePackage[hidelinks]{hyperref}
+
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0pt}
+\setlength{\bibsep}{0pt plus 0.3ex}
+\setlist[itemize]{leftmargin=1.3em,itemsep=0.15em,topsep=0.25em}
+\setlist[enumerate]{leftmargin=1.5em,itemsep=0.15em,topsep=0.25em}
+
+\pagestyle{plain}
+\sloppy
+
+\makeatletter
+\renewcommand{\maketitle}{%
+  \begin{center}
+    {\Large\bfseries \@title \par}
+    \vskip 0.75em
+    {\normalsize \@author \par}
+    \vskip 0.4em
+    {\small \@date \par}
+  \end{center}
+  \vskip 0.75em
+}
+
+\renewenvironment{abstract}{%
+  \begin{center}{\bfseries Abstract}\end{center}
+  \begin{quote}\small
+}{%
+  \end{quote}
+  \vskip 0.5em
+}
+
+\renewcommand\section{\@startsection {section}{1}{\z@}%
+  {-2.0ex plus -0.4ex minus -.2ex}%
+  {0.9ex plus .2ex}%
+  {\normalfont\large\bfseries}}
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}%
+  {-1.5ex plus -0.3ex minus -.2ex}%
+  {0.6ex plus .2ex}%
+  {\normalfont\normalsize\bfseries}}
+\renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}%
+  {-1.2ex plus -0.2ex minus -.2ex}%
+  {0.4ex plus .2ex}%
+  {\normalfont\normalsize\itshape}}
+\makeatother
+
+\providecommand{\aclpaperid}[1]{}
+\providecommand{\And}{\quad}
+\providecommand{\AND}{\quad}
